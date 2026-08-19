@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>igNYte Air Quality Network — 3D Air Quality Map</title>
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<style>
+  :root {
+    --bg: #0b1015;
+    --panel: #141b22;
+    --panel2: #1b232c;
+    --border: #263140;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --accent: #4fd1c5;
+    --warn: #f0b429;
+    --bad: #f16565;
+    --good: #57d38c;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  h1 { font-size: 20px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  h1 .logo { height: 30px; width: auto; }
+  .topbar {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    flex-wrap: wrap; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--border);
+  }
+  .page-nav { display: flex; gap: 4px; margin-top: 10px; }
+  .page-tab {
+    color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 500;
+    padding: 6px 12px; border-radius: 6px; border: 1px solid transparent; white-space: nowrap;
+  }
+  .page-tab:hover { color: var(--text); border-color: var(--border); }
+  .page-tab.active { color: var(--accent); background: var(--panel2); border-color: var(--border); }
+  .metric-tabs {
+    display: flex; gap: 4px; padding: 10px 24px; border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .metric-tab {
+    color: var(--muted); background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .metric-tab:hover { color: var(--text); border-color: var(--accent); }
+  .metric-tab.active { color: var(--accent); border-color: var(--accent); background: var(--panel); }
+  .main {
+    flex: 1; display: flex; min-height: 0;
+  }
+  .map-wrap { position: relative; flex: 1; }
+  #map { position: absolute; inset: 0; background: var(--panel); }
+  #marker-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .device-badge-3d {
+    position: absolute; top: 0; left: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+    pointer-events: auto; cursor: pointer; background: var(--panel2);
+    border: 2px solid var(--pollutant-color, var(--border));
+    border-radius: 10px; padding: 4px 10px 5px 8px; font-size: 11px; font-weight: 600; color: var(--text);
+    white-space: nowrap; transition: border-color 0.15s;
+  }
+  .device-badge-3d:hover, .device-badge-3d.active { border-color: var(--accent); }
+  .device-badge-3d .badge-main { display: flex; align-items: center; gap: 5px; }
+  .device-badge-3d .dot { width: 8px; height: 8px; }
+  .device-badge-3d .badge-sub { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
+  .badge-value-lg { font-size: 17px; font-weight: 800; color: var(--text); line-height: 1; }
+  .badge-unit { font-size: 9px; color: var(--muted); margin-left: 3px; font-weight: 500; }
+  .badge-avgline { font-size: 11px; color: var(--muted); font-weight: 500; }
+  .badge-signal-icon { display: flex; align-items: center; }
+  .signal-icon { display: block; }
+  .signal-legend {
+    position: absolute; top: 12px; right: 12px; z-index: 10;
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; font-size: 11px; color: var(--text);
+  }
+  .signal-legend .legend-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px; }
+  .signal-legend .legend-row { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+  .signal-legend .legend-swatch { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .sidebar {
+    width: 380px; flex-shrink: 0; background: var(--panel);
+    border-left: 1px solid var(--border); overflow-y: auto; padding: 16px;
+  }
+  .device-card {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; margin-bottom: 14px; cursor: pointer; transition: border-color 0.15s;
+  }
+  .device-card:hover { border-color: var(--accent); }
+  .device-card.active { border-color: var(--accent); }
+  .device-card .head {
+    display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;
+  }
+  .device-card .name { font-weight: 600; font-size: 14px; }
+  .device-card .loc { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+  .device-card .loc .floor { display: block; }
+  .station-link {
+    display: block; margin-top: 10px; text-align: right; font-size: 11px; font-weight: 600;
+    color: var(--accent); text-decoration: none;
+  }
+  .station-link:hover { text-decoration: underline; }
+  .status-indicator { display: flex; align-items: center; gap: 5px; margin-top: 4px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+  .dot.online { background: var(--good); }
+  .dot.delayed { background: var(--warn); }
+  .dot.issue { background: var(--bad); }
+  .dot.offline { background: var(--muted); }
+  .online-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--good); }
+  .delayed-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--warn); }
+  .issue-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--bad); }
+  .offline-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--muted); }
+  .batt-gauge-wrap { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .battery-icon {
+    position: relative; border: 2px solid var(--muted); border-radius: 3px;
+    box-sizing: border-box; padding: 2px; flex-shrink: 0;
+  }
+  .battery-icon::after {
+    content: ""; position: absolute; right: -4px; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 45%; background: var(--muted); border-radius: 0 2px 2px 0;
+  }
+  .battery-fill { position: absolute; left: 2px; top: 2px; bottom: 2px; border-radius: 1px; transition: width 0.3s; }
+  .battery-pct-inline {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,0.9); line-height: 1;
+  }
+  .batt-gauge-volt { font-weight: 600; color: var(--text); font-size: 12px; }
+  .pollutant-row, .environment-row {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: 8px; margin-top: 12px;
+  }
+  .pollutant {
+    text-align: center; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 4px;
+  }
+  .pollutant .p-value { font-size: 19px; font-weight: 700; color: var(--text); line-height: 1.2; }
+  .pollutant .p-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin-top: 2px; }
+  .daily-avg-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin-top: 8px;
+    font-size: 11px; color: var(--muted);
+  }
+  .comm-line {
+    font-size: 11px; color: var(--muted); margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--border); line-height: 1.6;
+  }
+  .ok-text { color: var(--good); }
+  .bad-text { color: var(--bad); }
+  .empty-msg { padding: 40px; text-align: center; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1><img src="ignyte_logo.png" alt="igNYte" class="logo"> Air Quality Network</h1>
+    <nav class="page-nav">
+      <a href="overview.html" class="page-tab active">3D Air Quality Network Map</a>
+      <a href="explorer.html" class="page-tab">Data Explorer</a>
+    </nav>
+  </div>
+</div>
+
+<div class="metric-tabs" id="metricTabs"></div>
+
+<div class="main">
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div id="marker-overlay"></div>
+    <div class="signal-legend" id="signalLegend">
+      <div class="legend-title">Cellular Signal</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#57d38c"></span>Excellent</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#8bd446"></span>Very Good</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#c7d436"></span>Good</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#f0b429"></span>Fair</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#f2884a"></span>Weak</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#f16565"></span>Extremely Weak</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#8b98a5"></span>Unavailable</div>
+    </div>
+  </div>
+  <div class="sidebar" id="sidebar">
+    <div class="empty-msg">Loading devices…</div>
+  </div>
+</div>
+
+<script>
+// ====== CONFIGURE HERE ======
+// Same Firebase project/auth token and device map as index.html.
+const AUTH = "SojVFn9WY98OBEf4rE1zhNkjpjvBVQATZkDnz7wM";
+const DEVICES = {
+  data1: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data1.json?auth=${AUTH}`,
+  data2: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data2.json?auth=${AUTH}`,
+  data3: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data3.json?auth=${AUTH}`,
+};
+// SIM7028 modem has no GPS hardware, so lat/lon are manual placeholders —
+// fill in each device's real coordinates once known. Keep in sync with
+// index.html. heightM is a rough guess (not measured).
+const DEVICE_LOCATIONS = {
+  data1: { lat: 40.6942, lon: -73.9866, location: "6 MetroTech Center, Brooklyn", floor: "6th Floor", heightM: 20 },
+  data2: { lat: 40.6928, lon: -73.9876, location: "370 Jay Street, Brooklyn", floor: "Rooftop", heightM: 47 },
+  data3: { lat: 40.6942, lon: -73.9866, location: "6 MetroTech Center, Brooklyn", floor: "6th Floor", heightM: 20 },
+};
+const REFRESH_MS = 15000;
+// Tuned to a ~5min device send interval — retune if that interval changes.
+// Keep in sync with index.html.
+//   <= ONLINE_MS            -> online            (green)
+//   ONLINE_MS..DELAYED_MS   -> delayed           (yellow)
+//   DELAYED_MS..ISSUE_MS    -> connection issue  (red)
+//   > ISSUE_MS              -> offline           (gray)
+const ONLINE_MS = 7 * 60 * 1000;
+const DELAYED_MS = 10 * 60 * 1000;
+const ISSUE_MS = 20 * 60 * 1000;
+// Only stretches the vertical SPREAD between devices sharing a building
+// (around their group's mean height, see computeDisplayHeights) — a
+// standalone device always renders at its true height. A few meters of
+// real floor difference is imperceptible next to a whole building at
+// normal zoom, so this exaggerates the gap for visibility without moving
+// the group away from its real floor range. Purely visual: badges/popups
+// always display the true heightM. Raise/lower to taste.
+const HEIGHT_EXAGGERATION = 2.5;
+// Electrochemical NO2/O3 sensors report raw ADC counts, not ppb — see the
+// detailed notes on this in index.html. Leave null until you have real
+// per-unit calibration constants; pollutant map badges show no EPA color
+// for NO2/O3 until then (raw counts can't be honestly categorized).
+// Keep in sync with index.html.
+const GAS_CALIBRATION = {
+  no2: { weZero: null, auxZero: null, weAuxRatio: null, sensitivity: null },
+  ox:  { weZero: null, auxZero: null, weAuxRatio: null, sensitivity: null },
+};
+// =============================
+
+const sidebar = document.getElementById("sidebar");
+let map = null;
+let layer3d = null;
+let badgeEls = {};
+let activeDevice = null;
+let refreshTimer = null;
+
+function fmt(v, digits) {
+  if (v === undefined || v === null || v === "") return "—";
+  if (typeof v === "number" && digits !== undefined) return v.toFixed(digits);
+  return v;
+}
+
+function fmtTime(ts) {
+  if (!ts) return null;
+  const d = new Date(ts * 1000);
+  return d.toLocaleString(undefined, {
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"
+  });
+}
+
+function battColor(soc) {
+  if (soc === undefined || soc === null) return "var(--muted)";
+  if (soc < 20) return "var(--bad)";
+  if (soc < 50) return "var(--warn)";
+  return "var(--good)";
+}
+
+// Phone-style battery icon — the fill bar's width still tracks percentage,
+// but the number is now printed directly on top of the icon (with a dark
+// text-shadow so it stays legible whether it's sitting over the filled or
+// unfilled part of the bar). Keep in sync with index.html.
+function batteryGaugeHtml(voltage, soc, opts) {
+  opts = opts || {};
+  const width = opts.width || 34;
+  const height = opts.height || 16;
+  const fontSize = opts.fontSize || Math.round(height * 0.6);
+  const voltFontSize = opts.voltFontSize || 12;
+  const pct = soc === undefined || soc === null ? 0 : Math.max(0, Math.min(100, soc));
+  const pctText = soc === undefined || soc === null ? "—" : Math.round(soc) + "%";
+  const voltText = voltage === undefined || voltage === null ? "—" : voltage.toFixed(2) + "V";
+  return `
+    <div class="batt-gauge-wrap">
+      <div class="battery-icon" style="width:${width}px;height:${height}px;">
+        <div class="battery-fill" style="width:${pct}%; background:${battColor(soc)};"></div>
+        <span class="battery-pct-inline" style="font-size:${fontSize}px;">${pctText}</span>
+      </div>
+      <span class="batt-gauge-volt" style="font-size:${voltFontSize}px;">${voltText}</span>
+    </div>
+  `;
+}
+
+// csq_rssi is the modem's 0-31 signal quality scale (99 = unknown/no
+// signal). Approx dBm for 1-30 uses the standard CSQ formula:
+// RSSI(dBm) = -113 + 2*CSQ. 0 and 31 are the table's fixed endpoints.
+// Keep in sync with index.html.
+function csqInfo(rssi) {
+  if (rssi === undefined || rssi === null || rssi === 99) return { label: "Signal Unavailable", dbm: null };
+  if (rssi === 0) return { label: "Extremely Weak", dbm: -113 };
+  if (rssi === 31) return { label: "Excellent", dbm: -51 };
+  const dbm = -113 + 2 * rssi;
+  if (rssi <= 9) return { label: "Weak", dbm };
+  if (rssi <= 14) return { label: "Fair", dbm };
+  if (rssi <= 19) return { label: "Good", dbm };
+  return { label: "Very Good", dbm }; // 20-30
+}
+
+// Red-to-green ramp, one color per CSQ category — used for both the map
+// badge signal icon and its legend swatches.
+function csqColor(rssi) {
+  if (rssi === undefined || rssi === null || rssi === 99) return "#8b98a5"; // Signal Unavailable
+  if (rssi === 0) return "#f16565";   // Extremely Weak
+  if (rssi <= 9) return "#f2884a";    // Weak
+  if (rssi <= 14) return "#f0b429";   // Fair
+  if (rssi <= 19) return "#c7d436";   // Good
+  if (rssi <= 30) return "#8bd446";   // Very Good
+  return "#57d38c";                   // Excellent (31)
+}
+
+// WiFi-style icon: a dot plus up to 3 nested arcs. Arc count is a rough
+// magnitude cue (scaled off the raw 0-31 CSQ value); the precise category
+// is carried by color (see csqColor/csqInfo), not by arc count alone.
+// Unavailable (99/no data) renders as a dimmed icon with a slash through it.
+function signalIconHtml(rssi, size) {
+  size = size || 16;
+  const color = csqColor(rssi);
+  if (rssi === undefined || rssi === null || rssi === 99) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" class="signal-icon">
+      <circle cx="12" cy="19" r="1.6" fill="${color}" opacity="0.5"/>
+      <path d="M8 15.5 A6 6 0 0 1 16 15.5" stroke="${color}" stroke-width="2" fill="none" opacity="0.35"/>
+      <path d="M4.5 11.5 A11 11 0 0 1 19.5 11.5" stroke="${color}" stroke-width="2" fill="none" opacity="0.35"/>
+      <path d="M1 7.5 A17 17 0 0 1 23 7.5" stroke="${color}" stroke-width="2" fill="none" opacity="0.35"/>
+      <line x1="2" y1="2" x2="22" y2="22" stroke="${color}" stroke-width="2.2"/>
+    </svg>`;
+  }
+  const tier = Math.max(0, Math.min(3, Math.ceil((rssi / 31) * 3)));
+  const arcs = [
+    { d: "M8 15.5 A6 6 0 0 1 16 15.5", level: 1 },
+    { d: "M4.5 11.5 A11 11 0 0 1 19.5 11.5", level: 2 },
+    { d: "M1 7.5 A17 17 0 0 1 23 7.5", level: 3 }
+  ];
+  const arcsSvg = arcs.map(a => `<path d="${a.d}" stroke="${a.level <= tier ? color : "var(--border)"}" stroke-width="2" fill="none"/>`).join("");
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" class="signal-icon"><circle cx="12" cy="19" r="1.6" fill="${color}"/>${arcsSvg}</svg>`;
+}
+
+// Real EPA breakpoint tables (2024 revision), same as index.html's AQI
+// circle — used here to color-code each pollutant tab's map badges.
+// No PM1 table: EPA doesn't publish AQI breakpoints for PM1 (not a NAAQS
+// criteria pollutant), so PM1 badges never get an EPA color. Keep in sync
+// with index.html.
+const AQI_BREAKPOINTS = {
+  pm25: [ // µg/m³, 24-hr average
+    [0.0, 9.0, 0, 50], [9.1, 35.4, 51, 100], [35.5, 55.4, 101, 150],
+    [55.5, 125.4, 151, 200], [125.5, 225.4, 201, 300], [225.5, 325.4, 301, 500]
+  ],
+  pm10: [ // µg/m³, 24-hr average
+    [0, 54, 0, 50], [55, 154, 51, 100], [155, 254, 101, 150],
+    [255, 354, 151, 200], [355, 424, 201, 300], [425, 604, 301, 500]
+  ],
+  no2: [ // ppb, 1-hr average
+    [0, 53, 0, 50], [54, 100, 51, 100], [101, 360, 101, 150],
+    [361, 649, 151, 200], [650, 1249, 201, 300], [1250, 1649, 301, 400], [1650, 2049, 401, 500]
+  ],
+  o3: [ // ppb, 8-hr average
+    [0, 54, 0, 50], [55, 70, 51, 100], [71, 85, 101, 150], [86, 105, 151, 200], [106, 200, 201, 300]
+  ]
+};
+
+function aqiFromConcentration(conc, table) {
+  if (conc === null || conc === undefined || isNaN(conc)) return null;
+  for (const [cLo, cHi, aLo, aHi] of table) {
+    if (conc >= cLo && conc <= cHi) return Math.round(((aHi - aLo) / (cHi - cLo)) * (conc - cLo) + aLo);
+  }
+  const last = table[table.length - 1];
+  return conc > last[1] ? 500 : null;
+}
+
+// Official EPA AQI category colors — returns null (no color) rather than
+// guessing when the concentration can't be computed (e.g. NO2/O3 still
+// uncalibrated).
+function aqiCategoryColor(conc, table) {
+  const aqi = aqiFromConcentration(conc, table);
+  if (aqi === null) return null;
+  if (aqi <= 50) return "#00e400";
+  if (aqi <= 100) return "#ffff00";
+  if (aqi <= 150) return "#ff7e00";
+  if (aqi <= 200) return "#ff0000";
+  if (aqi <= 300) return "#8f3f97";
+  return "#7e0023";
+}
+
+// Converts raw WE/AUX ADC counts to ppb using GAS_CALIBRATION — null if
+// any constant is unset. Keep in sync with index.html.
+function rawToPpb(weRaw, auxRaw, cal) {
+  if (cal.weZero === null || cal.auxZero === null || cal.weAuxRatio === null || cal.sensitivity === null) return null;
+  if (typeof weRaw !== "number" || typeof auxRaw !== "number") return null;
+  return ((weRaw - cal.weZero) - cal.weAuxRatio * (auxRaw - cal.auxZero)) / cal.sensitivity;
+}
+
+// Four-state connection status ("Station Status") from a record's
+// timestamp — reflects the device status reported in the latest received
+// payload, not a continuous live connection. See ONLINE_MS/DELAYED_MS/
+// ISSUE_MS above.
+function connectionState(ts) {
+  if (!ts) return { state: "offline", label: "Offline — no data yet" };
+  const age = Date.now() - ts * 1000;
+  if (age <= ONLINE_MS) return { state: "online", label: "Online — last @ " + fmtTime(ts) };
+  if (age <= DELAYED_MS) return { state: "delayed", label: "Delayed — last @ " + fmtTime(ts) };
+  if (age <= ISSUE_MS) return { state: "issue", label: "Connection Issue — last @ " + fmtTime(ts) };
+  return { state: "offline", label: "Offline — last @ " + fmtTime(ts) };
+}
+
+const STATUS_TEXT = { online: "ONLINE", delayed: "DELAYED", issue: "CONNECTION ISSUE", offline: "OFFLINE" };
+function statusBadge(state) {
+  return `<span class="${state}-label">${STATUS_TEXT[state] || "OFFLINE"}</span>`;
+}
+
+// Rolling window averages (not calendar-day/hour) so they stay meaningful
+// at any time, not just right after midnight. Keep in sync with index.html.
+function windowAvg(rows, field, windowMs) {
+  const cutoff = Date.now() - windowMs;
+  const vals = rows
+    .filter(r => r.timestamp && r.timestamp * 1000 >= cutoff && typeof r[field] === "number")
+    .map(r => r[field]);
+  if (!vals.length) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+const dailyAvg = (rows, field) => windowAvg(rows, field, 24 * 60 * 60 * 1000);
+const hourlyAvg = (rows, field) => windowAvg(rows, field, 60 * 60 * 1000);
+const fmtAvg = v => v === null ? "—" : v.toFixed(0);
+
+// Projects a MercatorCoordinate (real x/y/z, including altitude) through
+// MapLibre's mercator projection matrix straight to canvas pixels — this
+// is what lets the device-badge DOM elements track their true 3D position
+// (perspective, distance, etc.) as the camera orbits/tilts, without
+// MapLibre's own project()/Popup APIs (which only understand ground-level
+// lng/lat, no altitude).
+function projectMercatorToScreen(matrix, merc, canvas) {
+  const x = merc.x, y = merc.y, z = merc.z;
+  const clipX = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12];
+  const clipY = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
+  const clipW = matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15];
+  if (clipW <= 0) return null;
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (clipX / clipW * 0.5 + 0.5) * rect.width,
+    y: (1 - (clipY / clipW * 0.5 + 0.5)) * rect.height
+  };
+}
+
+// Devices whose true 3D screen position lands within a few pixels of each
+// other (identical/near-identical lat+lon+height — the current placeholder
+// data, or two sensors mounted right next to each other) would otherwise
+// sit exactly on top of one another with only the last one drawn actually
+// clickable. This nudges same-spot badges apart horizontally so every one
+// stays visible and clickable, without touching the (still true-position)
+// 3D spheres underneath.
+function declusterPoints(points) {
+  const CLUSTER_PX = 26, SPACING_PX = 120;
+  const ids = Object.keys(points).filter(id => points[id]);
+  const clusters = [];
+  ids.forEach(id => {
+    const p = points[id];
+    let cluster = clusters.find(c => Math.hypot(c.x - p.x, c.y - p.y) < CLUSTER_PX);
+    if (!cluster) { cluster = { x: p.x, y: p.y, ids: [] }; clusters.push(cluster); }
+    cluster.ids.push(id);
+  });
+  const spaced = {};
+  clusters.forEach(cluster => {
+    const n = cluster.ids.length;
+    cluster.ids.forEach((id, i) => {
+      spaced[id] = { x: cluster.x + (i - (n - 1) / 2) * SPACING_PX, y: cluster.y };
+    });
+  });
+  return spaced;
+}
+
+// A flat multiplier on absolute height (heightM * EXAGGERATION) blows up
+// fast for tall/standalone devices — e.g. data2's real 47m rooftop became
+// 235m at 5x, floating way above its own building. Instead, only exaggerate
+// the SPREAD between devices that share a building (same lat/lon), around
+// their group's mean height — that keeps the cluster anchored near the
+// real floor range while still pulling members clearly apart. A device
+// alone at its own coordinate (no siblings) always renders at its true,
+// unexaggerated height, since there's nothing to visually separate it from.
+function computeDisplayHeights(deviceLocations) {
+  const groups = {};
+  Object.entries(deviceLocations).forEach(([id, loc]) => {
+    const key = loc.lat.toFixed(5) + "," + loc.lon.toFixed(5);
+    (groups[key] = groups[key] || []).push(id);
+  });
+
+  const heights = {};
+  Object.values(groups).forEach(ids => {
+    const mean = ids.reduce((s, id) => s + (deviceLocations[id].heightM || 0), 0) / ids.length;
+    ids.forEach(id => {
+      const h = deviceLocations[id].heightM || 0;
+      heights[id] = ids.length > 1 ? mean + (h - mean) * HEIGHT_EXAGGERATION : h;
+    });
+  });
+  return heights;
+}
+
+// Renders a small stem + sphere at each device's true geographic altitude
+// using a Three.js scene layered into MapLibre's own WebGL context — the
+// standard technique for placing real 3D objects on a MapLibre map (see
+// MapLibre/Mapbox's "Add a 3D model" example). All device positions are
+// expressed in meters relative to one shared origin point to keep the
+// numbers small and precision-safe; horizontal offsets use a flat-earth
+// approximation, which is accurate at building/block scale.
+class Device3DLayer {
+  constructor(deviceLocations, onFrame) {
+    this.id = "device-3d-layer";
+    this.type = "custom";
+    this.renderingMode = "3d";
+    this.deviceLocations = deviceLocations;
+    this.onFrame = onFrame;
+    this.meshes = {};
+  }
+
+  onAdd(mapInstance, gl) {
+    this.map = mapInstance;
+    this.camera = new THREE.Camera();
+    this.scene = new THREE.Scene();
+    this.scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+    sun.position.set(50, 80, 100);
+    this.scene.add(sun);
+
+    const ids = Object.keys(this.deviceLocations);
+    const origin = this.deviceLocations[ids[0]];
+    this.originMerc = maplibregl.MercatorCoordinate.fromLngLat([origin.lon, origin.lat], 0);
+    this.metersToMercator = this.originMerc.meterInMercatorCoordinateUnits();
+    this.displayHeights = computeDisplayHeights(this.deviceLocations);
+
+    ids.forEach(id => {
+      const loc = this.deviceLocations[id];
+      const dxM = (loc.lon - origin.lon) * 111320 * Math.cos(origin.lat * Math.PI / 180);
+      const dyM = (loc.lat - origin.lat) * 111320;
+      const dzM = this.displayHeights[id];
+
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(1.6, 16, 16),
+        new THREE.MeshStandardMaterial({ color: 0x8b98a5 })
+      );
+      sphere.position.set(dxM, -dyM, dzM);
+      this.scene.add(sphere);
+
+      if (dzM > 0.01) {
+        const stem = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.35, 0.35, dzM, 8),
+          new THREE.MeshBasicMaterial({ color: 0x263140, transparent: true, opacity: 0.85 })
+        );
+        stem.rotation.x = Math.PI / 2;
+        stem.position.set(dxM, -dyM, dzM / 2);
+        this.scene.add(stem);
+      }
+
+      this.meshes[id] = sphere;
+    });
+
+    this.renderer = new THREE.WebGLRenderer({ canvas: mapInstance.getCanvas(), context: gl, antialias: true });
+    this.renderer.autoClear = false;
+  }
+
+  setStatus(id, state) {
+    const sphere = this.meshes[id];
+    if (!sphere) return;
+    const colors = { online: 0x57d38c, delayed: 0xf0b429, issue: 0xf16565, offline: 0x8b98a5 };
+    const emissive = { online: 0x1c4a36, delayed: 0x4a3a10, issue: 0x4a1c1c, offline: 0x000000 };
+    sphere.material.color.set(colors[state] ?? colors.offline);
+    sphere.material.emissive.set(emissive[state] ?? emissive.offline);
+  }
+
+  render(gl, args) {
+    // MapLibre exposes the mercator projection matrix at
+    // args.defaultProjectionData.mainMatrix — this is the one meant to be
+    // used directly with raw MercatorCoordinate x/y/z (per MapLibre's own
+    // custom-layer example), unlike args.modelViewProjectionMatrix which
+    // uses a different convention and produces wrong screen positions here.
+    const matrix = args.defaultProjectionData.mainMatrix;
+    const m = new THREE.Matrix4().fromArray(matrix);
+    const l = new THREE.Matrix4()
+      .makeTranslation(this.originMerc.x, this.originMerc.y, this.originMerc.z)
+      .scale(new THREE.Vector3(this.metersToMercator, -this.metersToMercator, this.metersToMercator));
+
+    this.camera.projectionMatrix = m.multiply(l);
+    this.renderer.resetState();
+    this.renderer.render(this.scene, this.camera);
+
+    if (this.onFrame) this.onFrame(matrix);
+    this.map.triggerRepaint();
+  }
+}
+
+function buildMap() {
+  const locs = Object.values(DEVICE_LOCATIONS);
+  map = new maplibregl.Map({
+    container: "map",
+    style: "https://tiles.openfreemap.org/styles/liberty",
+    center: locs.length ? [locs[0].lon, locs[0].lat] : [0, 0],
+    zoom: 16,
+    pitch: 60,
+    bearing: -17,
+    antialias: true
+  });
+  map.addControl(new maplibregl.NavigationControl());
+
+  const overlay = document.getElementById("marker-overlay");
+  const canvas = map.getCanvas();
+
+  Object.entries(DEVICE_LOCATIONS).forEach(([id, loc]) => {
+    const el = document.createElement("div");
+    el.className = "device-badge-3d";
+    el.dataset.device = id;
+    el.title = `${id} — ${loc.location || ""} — ${loc.floor || ""}${loc.heightM ? ` (~${loc.heightM}m)` : ""}`;
+    el.innerHTML = `
+      <div class="badge-main"><span class="dot offline"></span><span class="badge-text"></span><span class="badge-signal-icon"></span></div>
+      <div class="badge-sub"></div>
+    `;
+    el.addEventListener("click", () => focusDevice(id));
+    overlay.appendChild(el);
+    badgeEls[id] = el;
+  });
+
+  const displayHeights = computeDisplayHeights(DEVICE_LOCATIONS);
+  layer3d = new Device3DLayer(DEVICE_LOCATIONS, matrix => {
+    const points = {};
+    Object.entries(DEVICE_LOCATIONS).forEach(([id, loc]) => {
+      const merc = maplibregl.MercatorCoordinate.fromLngLat([loc.lon, loc.lat], displayHeights[id]);
+      points[id] = projectMercatorToScreen(matrix, merc, canvas);
+    });
+    const spaced = declusterPoints(points);
+
+    Object.keys(DEVICE_LOCATIONS).forEach(id => {
+      const el = badgeEls[id];
+      if (!el) return;
+      const p = spaced[id];
+      if (!p) { el.style.display = "none"; return; }
+      el.style.display = "flex";
+      el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -50%)`;
+    });
+  });
+  map.on("load", () => map.addLayer(layer3d));
+
+  const bounds = new maplibregl.LngLatBounds();
+  locs.forEach(loc => bounds.extend([loc.lon, loc.lat]));
+  map.fitBounds(bounds, { padding: 100, maxZoom: 16 });
+}
+
+function focusDevice(id) {
+  activeDevice = id;
+  const loc = DEVICE_LOCATIONS[id];
+  if (loc && map) {
+    map.flyTo({ center: [loc.lon, loc.lat], zoom: 18, pitch: 60 });
+  }
+  document.querySelectorAll(".device-card").forEach(el => {
+    el.classList.toggle("active", el.dataset.device === id);
+  });
+  document.querySelectorAll(".device-badge-3d").forEach(el => {
+    el.classList.toggle("active", el.dataset.device === id);
+  });
+}
+
+async function fetchDevice(id) {
+  try {
+    const res = await fetch(DEVICES[id], { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const json = await res.json();
+    if (!json) return { id, rows: [] };
+    const keys = Object.keys(json).sort();
+    return { id, rows: keys.map(k => ({ key: k, ...json[k] })) };
+  } catch (err) {
+    return { id, rows: [], error: err.message };
+  }
+}
+
+function renderSidebar(results) {
+  sidebar.innerHTML = results.map(({ id, rows, error }) => {
+    const loc = DEVICE_LOCATIONS[id] || {};
+    const latest = rows[rows.length - 1];
+
+    let dotClass = "offline", statusLabel = "Offline — no data yet";
+    if (latest && latest.timestamp) {
+      const cs = connectionState(latest.timestamp);
+      dotClass = cs.state;
+      statusLabel = cs.label;
+    } else if (error) {
+      statusLabel = "Offline — fetch error: " + error;
+    } else if (latest) {
+      statusLabel = "Offline — no device time yet (key " + latest.key.slice(-8) + ")";
+    }
+
+    const lastOk = latest ? latest.last_post_ok == 1 : null;
+    const csq = csqInfo(latest?.csq_rssi);
+
+    const soc = latest?.batt_soc;
+    const avgPm25 = dailyAvg(rows, "pm25");
+    const avgPm10 = dailyAvg(rows, "pm10");
+    const avgNo2 = dailyAvg(rows, "no2_we");
+    const avgO3 = dailyAvg(rows, "ox_we");
+
+    return `
+      <div class="device-card${activeDevice === id ? " active" : ""}" data-device="${id}" onclick="focusDevice('${id}')">
+        <div class="head">
+          <div>
+            <div class="name">${id}</div>
+            <div class="loc">${loc.location || "—"}<span class="floor">${loc.floor || ""}${loc.heightM ? ` (~${loc.heightM}m)` : ""}</span></div>
+          </div>
+          <div class="status-indicator">
+            <span class="dot ${dotClass}" title="${statusLabel}"></span>
+            ${statusBadge(dotClass)}
+          </div>
+        </div>
+        ${batteryGaugeHtml(latest?.batt_v, soc, { width: 44, height: 20, fontSize: 11, voltFontSize: 13 })}
+        <div class="pollutant-row">
+          <div class="pollutant"><div class="p-value">${fmt(latest?.pm25, 0)}</div><div class="p-label">PM2.5</div></div>
+          <div class="pollutant"><div class="p-value">${fmt(latest?.pm1, 0)}</div><div class="p-label">PM1</div></div>
+          <div class="pollutant"><div class="p-value">${fmt(latest?.pm10, 0)}</div><div class="p-label">PM10</div></div>
+          <div class="pollutant"><div class="p-value">${fmt(latest?.no2_we, 0)}</div><div class="p-label">NO2</div></div>
+          <div class="pollutant"><div class="p-value">${fmt(latest?.ox_we, 0)}</div><div class="p-label">O3</div></div>
+        </div>
+        <div class="environment-row">
+          <div class="pollutant"><div class="p-value">${fmt(latest?.temp, 1)}</div><div class="p-label">Temp °C</div></div>
+          <div class="pollutant"><div class="p-value">${fmt(latest?.hum, 0)}</div><div class="p-label">Humidity %</div></div>
+        </div>
+        <div class="daily-avg-row">
+          <span>PM2.5 24h avg: ${avgPm25 === null ? "—" : avgPm25.toFixed(0)}</span>
+          <span>PM10 24h avg: ${avgPm10 === null ? "—" : avgPm10.toFixed(0)}</span>
+          <span>NO2 24h avg: ${avgNo2 === null ? "—" : avgNo2.toFixed(0)}</span>
+          <span>O3 24h avg: ${avgO3 === null ? "—" : avgO3.toFixed(0)}</span>
+        </div>
+        <div class="comm-line">
+          Last send: <span class="${lastOk === true ? "ok-text" : lastOk === false ? "bad-text" : ""}">${lastOk === null ? "—" : (lastOk ? "OK" : "Failed")}${latest?.last_http_status ? " (" + latest.last_http_status + ")" : ""}</span><br>
+          Signal: ${csq.label}${csq.dbm !== null ? " (" + csq.dbm + " dBm · CSQ " + fmt(latest?.csq_rssi, 0) + ")" : ""}<br>
+          Pending: <span class="${latest?.pending_queue > 0 ? "bad-text" : "ok-text"}">${fmt(latest?.pending_queue, 0)}</span>
+        </div>
+        <a class="station-link" href="index.html?device=${id}" onclick="event.stopPropagation()">Station Details →</a>
+      </div>
+    `;
+  }).join("");
+}
+
+function updateDeviceStatus(results) {
+  results.forEach(({ id, rows }) => {
+    const latest = rows[rows.length - 1];
+    const state = latest && latest.timestamp ? connectionState(latest.timestamp).state : "offline";
+    if (layer3d) layer3d.setStatus(id, state);
+    const badge = badgeEls[id];
+    if (badge) {
+      const dot = badge.querySelector(".dot");
+      if (dot) dot.className = "dot " + state;
+    }
+  });
+}
+
+// ---- Map badge content mode ----
+// The badges always show name + height; the second line switches between
+// device health (Sensor Status tab) and a single pollutant's live reading
+// (per-pollutant tabs), driven by the metric tab bar above the map.
+const METRICS = [
+  { id: "status", label: "Sensor Status" },
+  { id: "pm1", label: "PM1" },
+  { id: "pm25", label: "PM2.5" },
+  { id: "pm10", label: "PM10" },
+  { id: "no2", label: "NO2" },
+  { id: "o3", label: "O3" }
+];
+let activeMetric = "status";
+let lastResults = [];
+
+function buildMetricTabs() {
+  const el = document.getElementById("metricTabs");
+  el.innerHTML = METRICS.map(m =>
+    `<button class="metric-tab${m.id === activeMetric ? " active" : ""}" data-metric="${m.id}" onclick="selectMetric('${m.id}')">${m.label}</button>`
+  ).join("");
+}
+
+function selectMetric(id) {
+  activeMetric = id;
+  document.querySelectorAll(".metric-tab").forEach(btn => btn.classList.toggle("active", btn.dataset.metric === id));
+  document.getElementById("signalLegend").style.display = id === "status" ? "block" : "none";
+  renderBadgeContent(lastResults);
+}
+
+// Pollutant tabs pair the most recent single reading with the period
+// average that's actually meaningful for that pollutant — 24h for PM
+// (matches the AQI/EPA methodology used elsewhere), 1h for NO2/O3 (their
+// raw electrode readings are noisier, so a longer window reads more like
+// a real recent trend than one instantaneous count). The badge color is
+// driven by that same average, run through the real EPA breakpoints —
+// PM2.5/PM10 always qualify (real µg/m³); NO2/O3 only get a color once
+// GAS_CALIBRATION has real constants (raw ADC counts can't be honestly
+// categorized); PM1 never gets an EPA color (no published breakpoints).
+function metricReadingDetailed(rows, latest) {
+  switch (activeMetric) {
+    case "pm1": {
+      const avg = dailyAvg(rows, "pm1");
+      return { latest: fmt(latest?.pm1, 0), unit: "µg/m³", avgLabel: "24h", avg: fmtAvg(avg), color: null };
+    }
+    case "pm25": {
+      const avg = dailyAvg(rows, "pm25");
+      return { latest: fmt(latest?.pm25, 0), unit: "µg/m³", avgLabel: "24h", avg: fmtAvg(avg), color: aqiCategoryColor(avg, AQI_BREAKPOINTS.pm25) };
+    }
+    case "pm10": {
+      const avg = dailyAvg(rows, "pm10");
+      return { latest: fmt(latest?.pm10, 0), unit: "µg/m³", avgLabel: "24h", avg: fmtAvg(avg), color: aqiCategoryColor(avg, AQI_BREAKPOINTS.pm10) };
+    }
+    case "no2": {
+      const avgWe = hourlyAvg(rows, "no2_we");
+      const ppb = rawToPpb(avgWe, hourlyAvg(rows, "no2_aux"), GAS_CALIBRATION.no2);
+      return { latest: fmt(latest?.no2_we, 0), unit: "raw", avgLabel: "1h", avg: fmtAvg(avgWe), color: aqiCategoryColor(ppb, AQI_BREAKPOINTS.no2) };
+    }
+    case "o3": {
+      const avgWe = hourlyAvg(rows, "ox_we");
+      const no2Ppb = rawToPpb(hourlyAvg(rows, "no2_we"), hourlyAvg(rows, "no2_aux"), GAS_CALIBRATION.no2);
+      const oxPpb = rawToPpb(avgWe, hourlyAvg(rows, "ox_aux"), GAS_CALIBRATION.ox);
+      const o3Ppb = (oxPpb !== null && no2Ppb !== null) ? Math.max(0, oxPpb - no2Ppb) : null;
+      return { latest: fmt(latest?.ox_we, 0), unit: "raw", avgLabel: "1h", avg: fmtAvg(avgWe), color: aqiCategoryColor(o3Ppb, AQI_BREAKPOINTS.o3) };
+    }
+    default: return null;
+  }
+}
+
+// Sensor Status keeps it minimal: name, height, status dot — no battery/
+// signal on the badge itself (still in the sidebar). Pollutant tabs show
+// no device name — just height + dot + large reading/avg text, and the
+// badge border tints to the pollutant's EPA category color.
+function renderBadgeContent(results) {
+  results.forEach(({ id, rows }) => {
+    const el = badgeEls[id];
+    if (!el) return;
+    const main = el.querySelector(".badge-text");
+    const sub = el.querySelector(".badge-sub");
+    const signalIcon = el.querySelector(".badge-signal-icon");
+    if (!main || !sub) return;
+    const loc = DEVICE_LOCATIONS[id] || {};
+    const latest = rows[rows.length - 1];
+
+    if (activeMetric === "status") {
+      main.textContent = `${id} · ~${loc.heightM || 0}m`;
+      sub.innerHTML = "";
+      el.style.removeProperty("--pollutant-color");
+      if (signalIcon) {
+        const csq = csqInfo(latest?.csq_rssi);
+        signalIcon.innerHTML = signalIconHtml(latest?.csq_rssi, 14);
+        signalIcon.title = `${csq.label}${csq.dbm !== null ? ` · ${csq.dbm} dBm` : ""}`;
+      }
+    } else {
+      main.textContent = `~${loc.heightM || 0}m`;
+      if (signalIcon) signalIcon.innerHTML = "";
+      const r = metricReadingDetailed(rows, latest);
+      sub.innerHTML = `<div><span class="badge-value-lg">${r.latest}</span><span class="badge-unit">${r.unit}</span></div><div class="badge-avgline">${r.avgLabel} avg ${r.avg}</div>`;
+      if (r.color) el.style.setProperty("--pollutant-color", r.color);
+      else el.style.removeProperty("--pollutant-color");
+    }
+  });
+}
+
+async function loadAll() {
+  const results = await Promise.all(Object.keys(DEVICES).map(fetchDevice));
+  lastResults = results;
+  renderSidebar(results);
+  updateDeviceStatus(results);
+  renderBadgeContent(results);
+}
+
+buildMetricTabs();
+buildMap();
+loadAll();
+refreshTimer = setInterval(loadAll, REFRESH_MS);
+</script>
+
+</body>
+</html>

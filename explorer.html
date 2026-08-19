@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>igNYte Air Quality Network — Data Explorer</title>
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #0b1015;
+    --panel: #141b22;
+    --panel2: #1b232c;
+    --border: #263140;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --accent: #4fd1c5;
+    --warn: #f0b429;
+    --bad: #f16565;
+    --good: #57d38c;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column;
+  }
+  h1 { font-size: 20px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  h1 .logo { height: 30px; width: auto; }
+  .topbar {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    flex-wrap: wrap; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--border);
+  }
+  .page-nav { display: flex; gap: 4px; margin-top: 10px; }
+  .page-tab {
+    color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 500;
+    padding: 6px 12px; border-radius: 6px; border: 1px solid transparent; white-space: nowrap;
+  }
+  .page-tab:hover { color: var(--text); border-color: var(--border); }
+  .page-tab.active { color: var(--accent); background: var(--panel2); border-color: var(--border); }
+
+  .explorer-main { display: flex; height: 72vh; min-height: 420px; }
+  .map-wrap { position: relative; flex: 1; }
+  #map { position: absolute; inset: 0; background: var(--panel); }
+  #marker-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .device-badge-3d {
+    position: absolute; top: 0; left: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+    pointer-events: auto; cursor: pointer; background: var(--panel2); border: 2px solid var(--border);
+    border-radius: 10px; padding: 4px 10px 5px 8px; font-size: 11px; font-weight: 600; color: var(--text);
+    white-space: nowrap; transition: border-color 0.15s;
+  }
+  .device-badge-3d:hover { border-color: var(--accent); }
+  .device-badge-3d.unchecked { opacity: 0.4; }
+  .device-badge-3d .badge-main { display: flex; align-items: center; gap: 5px; }
+  .device-badge-3d .dot { width: 8px; height: 8px; }
+  .device-badge-3d .badge-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+  .dot.online { background: var(--good); }
+  .dot.delayed { background: var(--warn); }
+  .dot.issue { background: var(--bad); }
+  .dot.offline { background: var(--muted); }
+
+  .control-panel {
+    width: 380px; flex-shrink: 0; background: var(--panel);
+    border-left: 1px solid var(--border); overflow-y: auto; padding: 18px;
+  }
+  .control-section { margin-bottom: 22px; }
+  .control-section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .control-section h3 { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0; }
+  .quick-links { font-size: 11px; }
+  .quick-links a { color: var(--accent); text-decoration: none; cursor: pointer; margin-left: 8px; }
+  .quick-links a:hover { text-decoration: underline; }
+  .check-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; cursor: pointer; }
+  .check-row input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+  .radio-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; cursor: pointer; }
+  .radio-row input[type="radio"] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+  .radio-row .radio-hint { color: var(--muted); font-size: 11px; }
+  .column-list { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+
+  .range-select { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .tab-btn {
+    background: var(--panel2); color: var(--muted); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .tab-btn:hover { color: var(--text); border-color: var(--accent); }
+  .tab-btn.active { color: var(--accent); border-color: var(--accent); background: var(--panel2); }
+  .range-date {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 5px 8px; font-size: 12px; font-family: inherit; cursor: pointer;
+  }
+  .range-date::-webkit-calendar-picker-indicator { cursor: pointer; filter: invert(0.7); }
+  .range-date-sep { font-size: 12px; color: var(--muted); }
+
+  select {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 13px; cursor: pointer; width: 100%;
+  }
+  .control-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 22px; }
+  .btn-primary, .btn-secondary {
+    border-radius: 8px; padding: 11px; font-size: 13px; font-weight: 700; cursor: pointer; border: 1px solid transparent;
+  }
+  .btn-primary { background: var(--accent); color: #06211d; }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-secondary { background: var(--panel2); color: var(--text); border-color: var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.5; cursor: default; }
+  .selection-note { font-size: 11px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+
+  .plot-area { padding: 24px; display: none; }
+  .plot-area-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .plot-area-head h2 { font-size: 15px; margin: 0; }
+  .plot-chart-box {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 16px;
+  }
+  .plot-chart-box h3 { margin: 0 0 8px 0; font-size: 13px; color: var(--muted); font-weight: 500; }
+  .plot-chart-box canvas { max-height: 260px; }
+  .empty { padding: 40px; text-align: center; color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1><img src="ignyte_logo.png" alt="igNYte" class="logo"> Air Quality Network</h1>
+    <nav class="page-nav">
+      <a href="overview.html" class="page-tab">3D Air Quality Network Map</a>
+      <a href="explorer.html" class="page-tab active">Data Explorer</a>
+    </nav>
+  </div>
+</div>
+
+<div class="explorer-main">
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div id="marker-overlay"></div>
+  </div>
+  <div class="control-panel">
+    <div class="control-section">
+      <div class="control-section-head">
+        <h3>Stations</h3>
+        <div class="quick-links"><a onclick="setAllStations(true)">All</a><a onclick="setAllStations(false)">None</a></div>
+      </div>
+      <div id="stationChecks"></div>
+    </div>
+
+    <div class="control-section">
+      <h3>Date Range</h3>
+      <div class="range-select" id="dateRangeTabs"></div>
+    </div>
+
+    <div class="control-section">
+      <div class="control-section-head">
+        <h3>Columns</h3>
+        <div class="quick-links"><a onclick="setAllColumns(true)">All</a><a onclick="setAllColumns(false)">None</a></div>
+      </div>
+      <div class="column-list" id="columnChecks"></div>
+    </div>
+
+    <div class="control-section">
+      <h3>Plot Aggregation</h3>
+      <label class="radio-row"><input type="radio" name="aggMode" value="raw" checked> Each station, raw values</label>
+      <label class="radio-row"><input type="radio" name="aggMode" value="dailyavg"> Each station, daily average</label>
+      <label class="radio-row"><input type="radio" name="aggMode" value="avg"> Average across selected stations</label>
+      <div class="radio-hint">Only affects "View Plot" — downloads always contain raw records.</div>
+    </div>
+
+    <div class="control-section">
+      <h3>Download Format</h3>
+      <select id="downloadFormat">
+        <option value="csv">CSV</option>
+        <option value="xlsx">Excel (.xlsx)</option>
+      </select>
+    </div>
+
+    <div class="control-actions">
+      <button class="btn-primary" id="downloadBtn" onclick="downloadData()">Download</button>
+      <button class="btn-secondary" id="plotBtn" onclick="viewPlot()">View Plot</button>
+    </div>
+    <div class="selection-note">Clicking a station's marker on the map toggles it too.</div>
+  </div>
+</div>
+
+<div class="plot-area" id="plotArea">
+  <div class="plot-area-head">
+    <h2>Plot</h2>
+    <button class="btn-secondary" onclick="document.getElementById('plotArea').style.display='none';">Close</button>
+  </div>
+  <div id="plotCharts"></div>
+</div>
+
+<script>
+// ====== CONFIGURE HERE ======
+// Same Firebase project/auth token and device map as index.html/overview.html.
+const AUTH = "SojVFn9WY98OBEf4rE1zhNkjpjvBVQATZkDnz7wM";
+const DEVICES = {
+  data1: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data1.json?auth=${AUTH}`,
+  data2: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data2.json?auth=${AUTH}`,
+  data3: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data3.json?auth=${AUTH}`,
+};
+// Keep in sync with overview.html/index.html.
+const DEVICE_LOCATIONS = {
+  data1: { lat: 40.6942, lon: -73.9866, location: "6 MetroTech Center, Brooklyn", floor: "6th Floor", heightM: 20 },
+  data2: { lat: 40.6928, lon: -73.9876, location: "370 Jay Street, Brooklyn", floor: "Rooftop", heightM: 47 },
+  data3: { lat: 40.6942, lon: -73.9866, location: "6 MetroTech Center, Brooklyn", floor: "6th Floor", heightM: 20 },
+};
+const ONLINE_MS = 7 * 60 * 1000;
+const DELAYED_MS = 10 * 60 * 1000;
+const ISSUE_MS = 20 * 60 * 1000;
+const HEIGHT_EXAGGERATION = 2.5; // see overview.html for the full rationale
+const DATE_RANGE_OPTIONS_DAYS = [1, 3, 7, 30];
+const STATION_COLORS = ["#4fd1c5", "#57d38c", "#f0b429", "#f16565", "#8b5cf6", "#f97316"];
+const EXPORT_COLUMNS = [
+  { key: "pm1", label: "PM1 (µg/m³)", checked: true },
+  { key: "pm25", label: "PM2.5 (µg/m³)", checked: true },
+  { key: "pm10", label: "PM10 (µg/m³)", checked: true },
+  { key: "no2_we", label: "NO2 WE (raw)", checked: false },
+  { key: "no2_aux", label: "NO2 AUX (raw)", checked: false },
+  { key: "ox_we", label: "O3 WE (raw)", checked: false },
+  { key: "ox_aux", label: "O3 AUX (raw)", checked: false },
+  { key: "temp", label: "Temperature (°C)", checked: true },
+  { key: "hum", label: "Humidity (%)", checked: true },
+  { key: "batt_v", label: "Battery Voltage (V)", checked: false },
+  { key: "batt_soc", label: "Battery SOC (%)", checked: false },
+  { key: "csq_rssi", label: "Signal (CSQ)", checked: false },
+  { key: "last_http_status", label: "HTTP Status", checked: false },
+  { key: "last_post_ok", label: "Post OK", checked: false },
+  { key: "pending_queue", label: "Pending Records", checked: false },
+];
+// =============================
+
+let map = null;
+let layer3d = null;
+let badgeEls = {};
+let checkedStations = new Set(Object.keys(DEVICES));
+let rangeWindowDays = 7;
+let customRange = null;
+let plotCharts = {};
+
+function fmtDateInput(ms) { return new Date(ms).toISOString().slice(0, 10); }
+
+function getExplorerRangeMs() {
+  if (customRange) return customRange;
+  const max = Date.now();
+  return { min: max - rangeWindowDays * 24 * 60 * 60 * 1000, max };
+}
+
+// ---- Station status (identical thresholds/logic to overview.html/index.html) ----
+function connectionState(ts) {
+  if (!ts) return { state: "offline", label: "Offline — no data yet" };
+  const age = Date.now() - ts * 1000;
+  if (age <= ONLINE_MS) return { state: "online", label: "Online" };
+  if (age <= DELAYED_MS) return { state: "delayed", label: "Delayed" };
+  if (age <= ISSUE_MS) return { state: "issue", label: "Connection Issue" };
+  return { state: "offline", label: "Offline" };
+}
+
+// ---- Map (ported from overview.html, Sensor Status view only) ----
+function computeDisplayHeights(deviceLocations) {
+  const groups = {};
+  Object.entries(deviceLocations).forEach(([id, loc]) => {
+    const key = loc.lat.toFixed(5) + "," + loc.lon.toFixed(5);
+    (groups[key] = groups[key] || []).push(id);
+  });
+  const heights = {};
+  Object.values(groups).forEach(ids => {
+    const mean = ids.reduce((s, id) => s + (deviceLocations[id].heightM || 0), 0) / ids.length;
+    ids.forEach(id => {
+      const h = deviceLocations[id].heightM || 0;
+      heights[id] = ids.length > 1 ? mean + (h - mean) * HEIGHT_EXAGGERATION : h;
+    });
+  });
+  return heights;
+}
+
+function projectMercatorToScreen(matrix, merc, canvas) {
+  const x = merc.x, y = merc.y, z = merc.z;
+  const clipX = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12];
+  const clipY = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
+  const clipW = matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15];
+  if (clipW <= 0) return null;
+  const rect = canvas.getBoundingClientRect();
+  return { x: (clipX / clipW * 0.5 + 0.5) * rect.width, y: (1 - (clipY / clipW * 0.5 + 0.5)) * rect.height };
+}
+
+function declusterPoints(points) {
+  const CLUSTER_PX = 26, SPACING_PX = 120;
+  const ids = Object.keys(points).filter(id => points[id]);
+  const clusters = [];
+  ids.forEach(id => {
+    const p = points[id];
+    let cluster = clusters.find(c => Math.hypot(c.x - p.x, c.y - p.y) < CLUSTER_PX);
+    if (!cluster) { cluster = { x: p.x, y: p.y, ids: [] }; clusters.push(cluster); }
+    cluster.ids.push(id);
+  });
+  const spaced = {};
+  clusters.forEach(cluster => {
+    const n = cluster.ids.length;
+    cluster.ids.forEach((id, i) => { spaced[id] = { x: cluster.x + (i - (n - 1) / 2) * SPACING_PX, y: cluster.y }; });
+  });
+  return spaced;
+}
+
+class Device3DLayer {
+  constructor(deviceLocations, onFrame) {
+    this.id = "device-3d-layer"; this.type = "custom"; this.renderingMode = "3d";
+    this.deviceLocations = deviceLocations; this.onFrame = onFrame; this.meshes = {};
+  }
+  onAdd(mapInstance, gl) {
+    this.map = mapInstance;
+    this.camera = new THREE.Camera();
+    this.scene = new THREE.Scene();
+    this.scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+    sun.position.set(50, 80, 100);
+    this.scene.add(sun);
+
+    const ids = Object.keys(this.deviceLocations);
+    const origin = this.deviceLocations[ids[0]];
+    this.originMerc = maplibregl.MercatorCoordinate.fromLngLat([origin.lon, origin.lat], 0);
+    this.metersToMercator = this.originMerc.meterInMercatorCoordinateUnits();
+    this.displayHeights = computeDisplayHeights(this.deviceLocations);
+
+    ids.forEach(id => {
+      const loc = this.deviceLocations[id];
+      const dxM = (loc.lon - origin.lon) * 111320 * Math.cos(origin.lat * Math.PI / 180);
+      const dyM = (loc.lat - origin.lat) * 111320;
+      const dzM = this.displayHeights[id];
+
+      const sphere = new THREE.Mesh(new THREE.SphereGeometry(1.6, 16, 16), new THREE.MeshStandardMaterial({ color: 0x8b98a5 }));
+      sphere.position.set(dxM, -dyM, dzM);
+      this.scene.add(sphere);
+
+      if (dzM > 0.01) {
+        const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, dzM, 8), new THREE.MeshBasicMaterial({ color: 0x263140, transparent: true, opacity: 0.85 }));
+        stem.rotation.x = Math.PI / 2;
+        stem.position.set(dxM, -dyM, dzM / 2);
+        this.scene.add(stem);
+      }
+      this.meshes[id] = sphere;
+    });
+
+    this.renderer = new THREE.WebGLRenderer({ canvas: mapInstance.getCanvas(), context: gl, antialias: true });
+    this.renderer.autoClear = false;
+  }
+  setStatus(id, state) {
+    const sphere = this.meshes[id];
+    if (!sphere) return;
+    const colors = { online: 0x57d38c, delayed: 0xf0b429, issue: 0xf16565, offline: 0x8b98a5 };
+    const emissive = { online: 0x1c4a36, delayed: 0x4a3a10, issue: 0x4a1c1c, offline: 0x000000 };
+    sphere.material.color.set(colors[state] ?? colors.offline);
+    sphere.material.emissive.set(emissive[state] ?? emissive.offline);
+  }
+  render(gl, args) {
+    const matrix = args.defaultProjectionData.mainMatrix;
+    const m = new THREE.Matrix4().fromArray(matrix);
+    const l = new THREE.Matrix4()
+      .makeTranslation(this.originMerc.x, this.originMerc.y, this.originMerc.z)
+      .scale(new THREE.Vector3(this.metersToMercator, -this.metersToMercator, this.metersToMercator));
+    this.camera.projectionMatrix = m.multiply(l);
+    this.renderer.resetState();
+    this.renderer.render(this.scene, this.camera);
+    if (this.onFrame) this.onFrame(matrix);
+    this.map.triggerRepaint();
+  }
+}
+
+function buildMap() {
+  const locs = Object.values(DEVICE_LOCATIONS);
+  map = new maplibregl.Map({
+    container: "map", style: "https://tiles.openfreemap.org/styles/liberty",
+    center: locs.length ? [locs[0].lon, locs[0].lat] : [0, 0], zoom: 16, pitch: 60, bearing: -17, antialias: true
+  });
+  map.addControl(new maplibregl.NavigationControl());
+
+  const overlay = document.getElementById("marker-overlay");
+  const canvas = map.getCanvas();
+
+  Object.entries(DEVICE_LOCATIONS).forEach(([id, loc]) => {
+    const el = document.createElement("div");
+    el.className = "device-badge-3d";
+    el.dataset.device = id;
+    el.title = `${id} — click to toggle selection`;
+    el.innerHTML = `
+      <div class="badge-main"><span class="dot offline"></span><span class="badge-text">${id} · ~${loc.heightM || 0}m</span></div>
+      <div class="badge-sub"></div>
+    `;
+    el.addEventListener("click", () => toggleStation(id));
+    overlay.appendChild(el);
+    badgeEls[id] = el;
+  });
+
+  const displayHeights = computeDisplayHeights(DEVICE_LOCATIONS);
+  layer3d = new Device3DLayer(DEVICE_LOCATIONS, matrix => {
+    const points = {};
+    Object.entries(DEVICE_LOCATIONS).forEach(([id, loc]) => {
+      const merc = maplibregl.MercatorCoordinate.fromLngLat([loc.lon, loc.lat], displayHeights[id]);
+      points[id] = projectMercatorToScreen(matrix, merc, canvas);
+    });
+    const spaced = declusterPoints(points);
+    Object.keys(DEVICE_LOCATIONS).forEach(id => {
+      const el = badgeEls[id];
+      if (!el) return;
+      const p = spaced[id];
+      if (!p) { el.style.display = "none"; return; }
+      el.style.display = "flex";
+      el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -50%)`;
+    });
+  });
+  map.on("load", () => map.addLayer(layer3d));
+
+  const bounds = new maplibregl.LngLatBounds();
+  locs.forEach(loc => bounds.extend([loc.lon, loc.lat]));
+  map.fitBounds(bounds, { padding: 100, maxZoom: 16 });
+}
+
+async function fetchDevice(id) {
+  try {
+    const res = await fetch(DEVICES[id], { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const json = await res.json();
+    if (!json) return { id, rows: [] };
+    const keys = Object.keys(json).sort();
+    return { id, rows: keys.map(k => ({ key: k, ...json[k] })) };
+  } catch (err) {
+    return { id, rows: [], error: err.message };
+  }
+}
+
+function updateMapStatus(results) {
+  results.forEach(({ id, rows }) => {
+    const latest = rows[rows.length - 1];
+    const state = latest && latest.timestamp ? connectionState(latest.timestamp).state : "offline";
+    if (layer3d) layer3d.setStatus(id, state);
+    const badge = badgeEls[id];
+    if (!badge) return;
+    const dot = badge.querySelector(".dot");
+    if (dot) dot.className = "dot " + state;
+    const sub = badge.querySelector(".badge-sub");
+    if (sub) sub.textContent = connectionState(latest && latest.timestamp).label;
+    badge.classList.toggle("unchecked", !checkedStations.has(id));
+  });
+}
+
+async function refreshMapStatus() {
+  const results = await Promise.all(Object.keys(DEVICES).map(fetchDevice));
+  updateMapStatus(results);
+}
+
+// ---- Selection controls ----
+function buildStationChecks() {
+  const el = document.getElementById("stationChecks");
+  el.innerHTML = Object.keys(DEVICES).map(id => `
+    <label class="check-row">
+      <input type="checkbox" class="station-check" value="${id}" ${checkedStations.has(id) ? "checked" : ""} onchange="onStationCheckChange('${id}', this.checked)">
+      ${id} <span style="color:var(--muted); font-size:11px;">— ${DEVICE_LOCATIONS[id]?.floor || ""}</span>
+    </label>
+  `).join("");
+}
+
+function onStationCheckChange(id, checked) {
+  if (checked) checkedStations.add(id); else checkedStations.delete(id);
+  const badge = badgeEls[id];
+  if (badge) badge.classList.toggle("unchecked", !checked);
+}
+
+function toggleStation(id) {
+  const cb = document.querySelector(`.station-check[value="${id}"]`);
+  if (!cb) return;
+  cb.checked = !cb.checked;
+  onStationCheckChange(id, cb.checked);
+}
+
+function setAllStations(state) {
+  document.querySelectorAll(".station-check").forEach(cb => { cb.checked = state; onStationCheckChange(cb.value, state); });
+}
+
+function buildColumnChecks() {
+  const el = document.getElementById("columnChecks");
+  el.innerHTML = EXPORT_COLUMNS.map(c => `
+    <label class="check-row">
+      <input type="checkbox" class="column-check" value="${c.key}" ${c.checked ? "checked" : ""}>
+      ${c.label}
+    </label>
+  `).join("");
+}
+
+function setAllColumns(state) {
+  document.querySelectorAll(".column-check").forEach(cb => { cb.checked = state; });
+}
+
+function buildDateRangeTabs() {
+  const el = document.getElementById("dateRangeTabs");
+  el.innerHTML = `
+    ${DATE_RANGE_OPTIONS_DAYS.map(d =>
+      `<button class="tab-btn${!customRange && d === rangeWindowDays ? " active" : ""}" data-range="${d}" onclick="selectDateRange(${d})">${d}D</button>`
+    ).join("")}
+    <button class="tab-btn${customRange ? " active" : ""}" data-range="custom" onclick="selectCustomRange()">Custom</button>
+    <input type="date" id="rangeFrom" class="range-date" onchange="applyCustomRange()" style="display:${customRange ? "inline-block" : "none"};">
+    <span class="range-date-sep" id="rangeSep" style="display:${customRange ? "inline" : "none"};">to</span>
+    <input type="date" id="rangeTo" class="range-date" onchange="applyCustomRange()" style="display:${customRange ? "inline-block" : "none"};">
+  `;
+}
+
+function selectDateRange(days) {
+  rangeWindowDays = days;
+  customRange = null;
+  document.querySelectorAll("#dateRangeTabs .tab-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.range == days));
+  ["rangeFrom", "rangeSep", "rangeTo"].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = "none"; });
+}
+
+function selectCustomRange() {
+  document.querySelectorAll("#dateRangeTabs .tab-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.range === "custom"));
+  const fromEl = document.getElementById("rangeFrom"), toEl = document.getElementById("rangeTo"), sepEl = document.getElementById("rangeSep");
+  fromEl.style.display = "inline-block"; toEl.style.display = "inline-block"; sepEl.style.display = "inline";
+  if (!fromEl.value || !toEl.value) {
+    const range = getExplorerRangeMs();
+    fromEl.value = fmtDateInput(range.min);
+    toEl.value = fmtDateInput(range.max);
+  }
+  applyCustomRange();
+}
+
+function applyCustomRange() {
+  const fromEl = document.getElementById("rangeFrom"), toEl = document.getElementById("rangeTo");
+  if (!fromEl.value || !toEl.value) return;
+  const min = new Date(fromEl.value + "T00:00:00").getTime();
+  const max = new Date(toEl.value + "T23:59:59").getTime();
+  if (isNaN(min) || isNaN(max) || min >= max) return;
+  customRange = { min, max };
+}
+
+function gatherSelection() {
+  const stationIds = Array.from(document.querySelectorAll(".station-check:checked")).map(el => el.value);
+  const columns = EXPORT_COLUMNS.filter(c => document.querySelector(`.column-check[value="${c.key}"]`)?.checked);
+  const aggMode = document.querySelector('input[name="aggMode"]:checked')?.value || "raw";
+  const format = document.getElementById("downloadFormat").value;
+  return { stationIds, columns, aggMode, format, range: getExplorerRangeMs() };
+}
+
+function setBusy(busy) {
+  document.getElementById("downloadBtn").disabled = busy;
+  document.getElementById("plotBtn").disabled = busy;
+}
+
+// ---- CSV / Excel export (raw records, long format: one row per record per station) ----
+function csvEscape(v) {
+  const s = v === undefined || v === null ? "" : String(v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function toCSV(rows, columns) {
+  const header = ["timestamp_utc", "station", ...columns.map(c => c.label)];
+  const lines = [header.map(csvEscape).join(",")];
+  rows.forEach(r => {
+    const line = [
+      r.timestamp ? new Date(r.timestamp * 1000).toISOString() : "",
+      r.station,
+      ...columns.map(c => r[c.key] !== undefined && r[c.key] !== null ? r[c.key] : "")
+    ];
+    lines.push(line.map(csvEscape).join(","));
+  });
+  return lines.join("\r\n");
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadXLSX(rows, columns, filename) {
+  const data = rows.map(r => {
+    const obj = { "Timestamp (UTC)": r.timestamp ? new Date(r.timestamp * 1000).toISOString() : "", "Station": r.station };
+    columns.forEach(c => { obj[c.label] = r[c.key] !== undefined && r[c.key] !== null ? r[c.key] : ""; });
+    return obj;
+  });
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Data");
+  XLSX.writeFile(wb, filename);
+}
+
+async function downloadData() {
+  const sel = gatherSelection();
+  if (!sel.stationIds.length) { alert("Select at least one station."); return; }
+  if (!sel.columns.length) { alert("Select at least one column."); return; }
+
+  setBusy(true);
+  try {
+    const results = await Promise.all(sel.stationIds.map(fetchDevice));
+    const allRows = [];
+    results.forEach(({ id, rows }) => {
+      rows
+        .filter(r => r.timestamp && r.timestamp * 1000 >= sel.range.min && r.timestamp * 1000 <= sel.range.max)
+        .forEach(r => allRows.push({ ...r, station: id }));
+    });
+    allRows.sort((a, b) => a.timestamp - b.timestamp);
+
+    if (!allRows.length) { alert("No records in the selected date range."); return; }
+
+    const filename = `aq-export_${fmtDateInput(sel.range.min)}_to_${fmtDateInput(sel.range.max)}`;
+    if (sel.format === "xlsx") downloadXLSX(allRows, sel.columns, filename + ".xlsx");
+    else triggerDownload(new Blob([toCSV(allRows, sel.columns)], { type: "text/csv" }), filename + ".csv");
+  } finally {
+    setBusy(false);
+  }
+}
+
+// ---- Plotting ----
+function bucketStart(ts, granularity) {
+  const d = new Date(ts * 1000);
+  return granularity === "hour"
+    ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()).getTime()
+    : new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+function bucketAverage(rows, column, granularity) {
+  const buckets = {};
+  rows.forEach(r => {
+    if (!r.timestamp || typeof r[column] !== "number") return;
+    const k = bucketStart(r.timestamp, granularity);
+    (buckets[k] = buckets[k] || []).push(r[column]);
+  });
+  return Object.keys(buckets)
+    .map(k => ({ x: Number(k), y: buckets[k].reduce((a, b) => a + b, 0) / buckets[k].length }))
+    .sort((a, b) => a.x - b.x);
+}
+
+// aggMode: "raw" (one line per station, unaggregated), "dailyavg" (one line
+// per station, bucketed to calendar-day averages), "avg" (single combined
+// line, all selected stations pooled into hourly buckets then averaged).
+function buildPlotSeries(stationsData, column, aggMode) {
+  if (aggMode === "avg") {
+    const buckets = {};
+    stationsData.forEach(({ rows }) => {
+      rows.forEach(r => {
+        if (!r.timestamp || typeof r[column] !== "number") return;
+        const k = bucketStart(r.timestamp, "hour");
+        (buckets[k] = buckets[k] || []).push(r[column]);
+      });
+    });
+    const points = Object.keys(buckets)
+      .map(k => ({ x: Number(k), y: buckets[k].reduce((a, b) => a + b, 0) / buckets[k].length }))
+      .sort((a, b) => a.x - b.x);
+    return [{ label: "Average (all selected stations)", data: points, color: STATION_COLORS[0] }];
+  }
+  if (aggMode === "dailyavg") {
+    return stationsData.map(({ id, rows }, i) => ({
+      label: id + " (daily avg)", data: bucketAverage(rows, column, "day"), color: STATION_COLORS[i % STATION_COLORS.length]
+    }));
+  }
+  return stationsData.map(({ id, rows }, i) => ({
+    label: id,
+    data: rows.filter(r => r.timestamp && typeof r[column] === "number").map(r => ({ x: r.timestamp * 1000, y: r[column] })),
+    color: STATION_COLORS[i % STATION_COLORS.length]
+  }));
+}
+
+function renderPlots(stationsData, columns, aggMode, range) {
+  const area = document.getElementById("plotArea");
+  const chartsEl = document.getElementById("plotCharts");
+  area.style.display = "block";
+
+  Object.values(plotCharts).forEach(ch => ch.destroy());
+  plotCharts = {};
+
+  chartsEl.innerHTML = columns.map(c => `<div class="plot-chart-box"><h3>${c.label}</h3><canvas id="plotChart_${c.key}"></canvas></div>`).join("");
+
+  columns.forEach(col => {
+    const series = buildPlotSeries(stationsData, col.key, aggMode);
+    const ctx = document.getElementById("plotChart_" + col.key).getContext("2d");
+    plotCharts[col.key] = new Chart(ctx, {
+      type: "line",
+      data: { datasets: series.map(s => ({ label: s.label, data: s.data, borderColor: s.color, backgroundColor: s.color + "33", tension: 0.25, pointRadius: 1.5 })) },
+      options: {
+        responsive: true, animation: false, parsing: false,
+        scales: {
+          x: {
+            type: "linear", min: range.min, max: range.max,
+            ticks: {
+              color: "#8b98a5", maxRotation: 0, autoSkip: true, maxTicksLimit: 8,
+              callback: v => {
+                const d = new Date(v);
+                return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+              }
+            },
+            grid: { color: "#263140" }
+          },
+          y: { ticks: { color: "#8b98a5" }, grid: { color: "#263140" } }
+        },
+        plugins: { legend: { display: series.length > 1, labels: { color: "#8b98a5" } } }
+      }
+    });
+  });
+
+  area.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function viewPlot() {
+  const sel = gatherSelection();
+  if (!sel.stationIds.length) { alert("Select at least one station."); return; }
+  if (!sel.columns.length) { alert("Select at least one column."); return; }
+
+  setBusy(true);
+  try {
+    const results = await Promise.all(sel.stationIds.map(fetchDevice));
+    const filtered = results.map(({ id, rows }) => ({
+      id,
+      rows: rows.filter(r => r.timestamp && r.timestamp * 1000 >= sel.range.min && r.timestamp * 1000 <= sel.range.max)
+    }));
+    if (!filtered.some(f => f.rows.length)) { alert("No records in the selected date range."); return; }
+    renderPlots(filtered, sel.columns, sel.aggMode, sel.range);
+  } finally {
+    setBusy(false);
+  }
+}
+
+buildStationChecks();
+buildDateRangeTabs();
+buildColumnChecks();
+buildMap();
+refreshMapStatus();
+setInterval(refreshMapStatus, 15000);
+</script>
+
+</body>
+</html>
