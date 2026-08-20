@@ -94,6 +94,8 @@
     display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;
   }
   .device-card .name { font-weight: 600; font-size: 14px; }
+  .device-card .name-row { display: flex; align-items: center; gap: 8px; }
+  .device-card .name-row .batt-gauge-wrap { margin-top: 0; }
   .device-card .loc { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
   .device-card .loc .floor { display: block; }
   .station-link {
@@ -694,7 +696,10 @@ function renderSidebar(results) {
       <div class="device-card${activeDevice === id ? " active" : ""}" data-device="${id}" onclick="focusDevice('${id}')">
         <div class="head">
           <div>
-            <div class="name">${id}</div>
+            <div class="name-row">
+              <span class="name">${id}</span>
+              ${batteryGaugeHtml(latest?.batt_v, soc, { width: 32, height: 15, fontSize: 9, voltFontSize: 11 })}
+            </div>
             <div class="loc">${loc.location || "—"}<span class="floor">${loc.floor || ""}${loc.heightM ? ` (~${loc.heightM}m)` : ""}</span></div>
           </div>
           <div class="status-indicator">
@@ -702,7 +707,6 @@ function renderSidebar(results) {
             ${statusBadge(dotClass)}
           </div>
         </div>
-        ${batteryGaugeHtml(latest?.batt_v, soc, { width: 44, height: 20, fontSize: 11, voltFontSize: 13 })}
         <div class="pollutant-row">
           <div class="pollutant"><div class="p-value">${fmt(latest?.pm25, 0)}</div><div class="p-label">PM2.5</div></div>
           <div class="pollutant"><div class="p-value">${fmt(latest?.pm1, 0)}</div><div class="p-label">PM1</div></div>
