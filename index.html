@@ -2,8 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Air Quality Device — Live Dashboard</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<title>igNYte Air Quality Network — 3D Air Quality Map</title>
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <style>
   :root {
     --bg: #0b1015;
@@ -18,18 +20,18 @@
     --good: #57d38c;
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
   body {
-    margin: 0;
     background: var(--bg);
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    padding: 24px;
+    display: flex; flex-direction: column;
   }
   h1 { font-size: 20px; margin: 0; display: flex; align-items: center; gap: 8px; }
   h1 .logo { height: 30px; width: auto; }
   .topbar {
     display: flex; justify-content: space-between; align-items: flex-end;
-    flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
+    flex-wrap: wrap; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--border);
   }
   .page-nav { display: flex; gap: 4px; margin-top: 10px; }
   .page-tab {
@@ -38,31 +40,78 @@
   }
   .page-tab:hover { color: var(--text); border-color: var(--border); }
   .page-tab.active { color: var(--accent); background: var(--panel2); border-color: var(--border); }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .metric-tabs {
+    display: flex; gap: 4px; padding: 10px 24px; border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .metric-tab {
+    color: var(--muted); background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .metric-tab:hover { color: var(--text); border-color: var(--accent); }
+  .metric-tab.active { color: var(--accent); border-color: var(--accent); background: var(--panel); }
+  .main {
+    flex: 1; display: flex; min-height: 0;
+  }
+  .map-wrap { position: relative; flex: 1; }
+  #map { position: absolute; inset: 0; background: var(--panel); }
+  #marker-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .device-badge-3d {
+    position: absolute; top: 0; left: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+    pointer-events: auto; cursor: pointer; background: var(--panel2);
+    border: 2px solid var(--pollutant-color, var(--border));
+    border-radius: 10px; padding: 4px 10px 5px 8px; font-size: 11px; font-weight: 600; color: var(--text);
+    white-space: nowrap; transition: border-color 0.15s;
+  }
+  .device-badge-3d:hover, .device-badge-3d.active { border-color: var(--accent); }
+  .device-badge-3d .badge-main { display: flex; align-items: center; gap: 5px; }
+  .device-badge-3d .dot { width: 8px; height: 8px; }
+  .device-badge-3d .badge-sub { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
+  .badge-value-lg { font-size: 17px; font-weight: 800; color: var(--text); line-height: 1; }
+  .badge-unit { font-size: 9px; color: var(--muted); margin-left: 3px; font-weight: 500; }
+  .badge-avgline { font-size: 11px; color: var(--muted); font-weight: 500; }
+  .badge-signal-icon { display: flex; align-items: center; }
+  .signal-icon { display: block; }
+  .signal-legend {
+    position: absolute; top: 12px; right: 12px; z-index: 10;
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; font-size: 11px; color: var(--text);
+  }
+  .signal-legend .legend-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px; }
+  .signal-legend .legend-row { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
+  .signal-legend .legend-swatch { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .sidebar {
+    width: 380px; flex-shrink: 0; background: var(--panel);
+    border-left: 1px solid var(--border); overflow-y: auto; padding: 16px;
+  }
+  .device-card {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; margin-bottom: 14px; cursor: pointer; transition: border-color 0.15s;
+  }
+  .device-card:hover { border-color: var(--accent); }
+  .device-card.active { border-color: var(--accent); }
+  .device-card .head {
+    display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;
+  }
+  .device-card .name { font-weight: 600; font-size: 14px; }
+  .device-card .loc { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+  .device-card .loc .floor { display: block; }
+  .station-link {
+    display: block; margin-top: 10px; text-align: right; font-size: 11px; font-weight: 600;
+    color: var(--accent); text-decoration: none;
+  }
+  .station-link:hover { text-decoration: underline; }
+  .status-indicator { display: flex; align-items: center; gap: 5px; margin-top: 4px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
   .dot.online { background: var(--good); }
   .dot.delayed { background: var(--warn); }
   .dot.issue { background: var(--bad); }
   .dot.offline { background: var(--muted); }
-  .status-indicator { display: flex; align-items: center; gap: 6px; }
-  .online-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--good); }
-  .delayed-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--warn); }
-  .issue-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--bad); }
-  .offline-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--muted); }
-  button {
-    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-    border-radius: 6px; padding: 8px 14px; font-size: 13px; cursor: pointer;
-  }
-  button:hover { border-color: var(--accent); }
-  .station-info {
-    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
-    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-    padding: 14px 18px; margin-bottom: 16px;
-  }
-  .station-info .station-name { font-size: 20px; font-weight: 700; color: var(--accent); }
-  .station-info .station-detail { font-size: 13px; }
-  .station-info .station-detail .label { color: var(--muted); margin-right: 6px; }
-  .station-info .station-detail .value { color: var(--text); font-weight: 500; }
-  .batt-gauge-wrap { display: flex; align-items: center; gap: 8px; }
+  .online-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--good); }
+  .delayed-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--warn); }
+  .issue-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--bad); }
+  .offline-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--muted); }
+  .batt-gauge-wrap { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
   .battery-icon {
     position: relative; border: 2px solid var(--muted); border-radius: 3px;
     box-sizing: border-box; padding: 2px; flex-shrink: 0;
@@ -76,71 +125,27 @@
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     font-weight: 700; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,0.9); line-height: 1;
   }
-  .batt-gauge-volt { font-weight: 600; color: var(--text); font-size: 13px; }
-  .dashboard-top { display: flex; gap: 20px; margin-bottom: 24px; align-items: stretch; flex-wrap: wrap; }
-  .aqi-circle {
-    width: 190px; height: 190px; border-radius: 50%; flex-shrink: 0;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    border: 7px solid var(--border); background: var(--panel); margin: 0 auto;
+  .batt-gauge-volt { font-weight: 600; color: var(--text); font-size: 12px; }
+  .pollutant-row, .environment-row {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: 8px; margin-top: 12px;
   }
-  .aqi-circle .aqi-value { font-size: 52px; font-weight: 800; line-height: 1; }
-  .aqi-circle .aqi-index-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 6px; }
-  .aqi-circle .aqi-category { font-size: 13px; font-weight: 700; margin-top: 6px; text-align: center; padding: 0 12px; }
-  .aqi-note { font-size: 10px; color: var(--muted); text-align: center; max-width: 190px; margin: 8px auto 0; line-height: 1.4; }
-  .stat-columns { flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 12px; justify-content: center; }
-  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; margin-bottom: 20px; }
-  .dashboard-top .stat-row { margin-bottom: 0; }
-  .toolbar-row {
-    display: flex; justify-content: space-between; align-items: center;
-    gap: 16px; flex-wrap: wrap; margin-bottom: 16px;
+  .pollutant {
+    text-align: center; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 4px;
   }
-  .toolbar-row .tab-switch { flex-shrink: 0; }
-  .toolbar-row .range-select { flex-shrink: 0; margin-left: auto; }
-  .tab-switch { display: flex; gap: 8px; }
-  .tab-btn {
-    background: var(--panel2); color: var(--muted); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+  .pollutant .p-value { font-size: 19px; font-weight: 700; color: var(--text); line-height: 1.2; }
+  .pollutant .p-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin-top: 2px; }
+  .daily-avg-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin-top: 8px;
+    font-size: 11px; color: var(--muted);
   }
-  .tab-btn:hover { color: var(--text); border-color: var(--accent); }
-  .tab-btn.active { color: var(--accent); border-color: var(--accent); background: var(--panel); }
-  .range-select { display: flex; justify-content: flex-start; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .range-select .range-label { font-size: 12px; color: var(--muted); font-weight: 600; margin-right: 2px; }
-  .range-select .tab-btn { padding: 6px 14px; }
-  .range-date {
-    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
-    border-radius: 8px; padding: 5px 10px; font-size: 12px; font-family: inherit; cursor: pointer;
+  .comm-line {
+    font-size: 11px; color: var(--muted); margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--border); line-height: 1.6;
   }
-  .range-date:hover { border-color: var(--accent); }
-  .range-date::-webkit-calendar-picker-indicator { cursor: pointer; filter: invert(0.7); }
-  .range-date-sep { font-size: 12px; color: var(--muted); }
-  .panel-subhead {
-    font-size: 13px; color: var(--muted); font-weight: 600; margin: 0 0 4px 0;
-  }
-  .panel-subhead:not(:first-child) { margin-top: 20px; }
-  .panel-subnote { font-size: 11px; color: var(--muted); margin: 0 0 10px 0; line-height: 1.4; }
-  .card {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
-    padding: 14px 16px;
-  }
-  .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-  .card .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
-  .card .unit { font-size: 12px; color: var(--muted); margin-left: 4px; font-weight: 400; }
-  .card .sub { font-size: 10px; color: var(--muted); margin-top: 6px; }
-  .card .batt-gauge-wrap { margin-top: 6px; }
-  .card .value-with-icon { display: flex; align-items: center; gap: 6px; }
-  .signal-icon { display: block; }
-  .charts {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-    gap: 16px; margin-bottom: 24px;
-  }
-  .chart-box {
-    background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
-  }
-  .chart-box h3 { margin: 0 0 8px 0; font-size: 13px; color: var(--muted); font-weight: 500; }
-  .chart-box canvas { max-height: 220px; }
-  .empty {
-    padding: 40px; text-align: center; color: var(--muted); font-size: 14px;
-  }
+  .ok-text { color: var(--good); }
+  .bad-text { color: var(--bad); }
+  .empty-msg { padding: 40px; text-align: center; color: var(--muted); font-size: 13px; }
 </style>
 </head>
 <body>
@@ -149,36 +154,54 @@
   <div>
     <h1><img src="ignyte_logo.png" alt="igNYte" class="logo"> Air Quality Network</h1>
     <nav class="page-nav">
-      <a href="overview.html" class="page-tab">3D Air Quality Network Map</a>
+      <a href="index.html" class="page-tab active">3D Air Quality Network Map</a>
       <a href="explorer.html" class="page-tab">Data Explorer</a>
     </nav>
   </div>
-  <div style="display:flex; align-items:center; gap:14px;">
-    <button id="refreshBtn">Refresh now</button>
-  </div>
 </div>
 
-<div id="content">
-  <div class="empty">Loading…</div>
+<div class="metric-tabs" id="metricTabs"></div>
+
+<div class="main">
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div id="marker-overlay"></div>
+    <div class="signal-legend" id="signalLegend">
+      <div class="legend-title">Cellular Signal</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#57d38c"></span>Excellent</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#8bd446"></span>Very Good</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#c7d436"></span>Good</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#f0b429"></span>Fair</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#f2884a"></span>Weak</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#f16565"></span>Extremely Weak</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#8b98a5"></span>Unavailable</div>
+    </div>
+  </div>
+  <div class="sidebar" id="sidebar">
+    <div class="empty-msg">Loading devices…</div>
+  </div>
 </div>
 
 <script>
 // ====== CONFIGURE HERE ======
-// Same Firebase project/auth token, one endpoint per physical device -
-// data1/data3 are currently the ones actually sending; data2 is a known
-// gap right now (device not posting), left in the switcher so it just
-// shows "no records yet" until that gets fixed rather than being hidden.
+// Same Firebase project/auth token and device map as station.html.
 const AUTH = "SojVFn9WY98OBEf4rE1zhNkjpjvBVQATZkDnz7wM";
 const DEVICES = {
   data1: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data1.json?auth=${AUTH}`,
   data2: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data2.json?auth=${AUTH}`,
   data3: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data3.json?auth=${AUTH}`,
 };
-const DEFAULT_DEVICE = "data1";   // data2's device isn't sending right now
+// SIM7028 modem has no GPS hardware, so lat/lon are manual placeholders —
+// fill in each device's real coordinates once known. Keep in sync with
+// station.html. heightM is a rough guess (not measured).
+const DEVICE_LOCATIONS = {
+  data1: { lat: 40.6942, lon: -73.9866, location: "6 MetroTech Center, Brooklyn", floor: "6th Floor", heightM: 20 },
+  data2: { lat: 40.6928, lon: -73.9876, location: "370 Jay Street, Brooklyn", floor: "Rooftop", heightM: 47 },
+  data3: { lat: 40.6942, lon: -73.9866, location: "6 MetroTech Center, Brooklyn", floor: "6th Floor", heightM: 20 },
+};
 const REFRESH_MS = 15000;
-const DATE_RANGE_OPTIONS_DAYS = [1, 3, 7, 30]; // shown as the date-range tabs
 // Tuned to a ~5min device send interval — retune if that interval changes.
-// Keep in sync with overview.html.
+// Keep in sync with station.html.
 //   <= ONLINE_MS            -> online            (green)
 //   ONLINE_MS..DELAYED_MS   -> delayed           (yellow)
 //   DELAYED_MS..ISSUE_MS    -> connection issue  (red)
@@ -186,89 +209,31 @@ const DATE_RANGE_OPTIONS_DAYS = [1, 3, 7, 30]; // shown as the date-range tabs
 const ONLINE_MS = 7 * 60 * 1000;
 const DELAYED_MS = 10 * 60 * 1000;
 const ISSUE_MS = 20 * 60 * 1000;
-const ROLLING_WINDOW = 20;           // matches overview.html — how many recent records the comm success % covers
-// SIM7028 modem has no GPS hardware, so lat/lon are manual placeholders —
-// fill in each device's real coordinates once known. Keep in sync with
-// overview.html's DEVICE_LOCATIONS. heightM is a rough guess (not
-// measured), shown in the station info bar below.
-const DEVICE_LOCATIONS = {
-  data1: { lat: 40.6942, lon: -73.9866, location: "6 MetroTech Center, Brooklyn", floor: "6th Floor", heightM: 20 },
-  data2: { lat: 40.6928, lon: -73.9876, location: "370 Jay Street, Brooklyn", floor: "Rooftop", heightM: 47 },
-  data3: { lat: 40.6942, lon: -73.9866, location: "6 MetroTech Center, Brooklyn", floor: "6th Floor", heightM: 20 },
-};
-// Electrochemical NO2/O3 sensors (e.g. Alphasense NO2-B43F / OX-B431) report
-// raw ADC counts on a working (WE) and auxiliary (AUX) electrode — converting
-// to ppb needs per-unit constants from that sensor's individual calibration
-// certificate (they're NOT the same across units, even the same model).
-//   ppb = ((WE_raw - weZero) - weAuxRatio * (AUX_raw - auxZero)) / sensitivity
-// The OX (oxidant) electrode responds to NO2 as well as O3, so real O3 ppb
-// is computed as OX_ppb - NO2_ppb (standard correction for this sensor type).
-// Leave any value `null` until you have it from the certificate — AQI and
-// ppb display for that gas will keep showing "—" rather than a fabricated
-// number computed from an uncalibrated raw count.
+// Only stretches the vertical SPREAD between devices sharing a building
+// (around their group's mean height, see computeDisplayHeights) — a
+// standalone device always renders at its true height. A few meters of
+// real floor difference is imperceptible next to a whole building at
+// normal zoom, so this exaggerates the gap for visibility without moving
+// the group away from its real floor range. Purely visual: badges/popups
+// always display the true heightM. Raise/lower to taste.
+const HEIGHT_EXAGGERATION = 2.5;
+// Electrochemical NO2/O3 sensors report raw ADC counts, not ppb — see the
+// detailed notes on this in station.html. Leave null until you have real
+// per-unit calibration constants; pollutant map badges show no EPA color
+// for NO2/O3 until then (raw counts can't be honestly categorized).
+// Keep in sync with station.html.
 const GAS_CALIBRATION = {
-  no2: { weZero: null, auxZero: null, weAuxRatio: null, sensitivity: null }, // sensitivity in counts/ppb
-  ox:  { weZero: null, auxZero: null, weAuxRatio: null, sensitivity: null }, // "oxidant" (NO2+O3) electrode
+  no2: { weZero: null, auxZero: null, weAuxRatio: null, sensitivity: null },
+  ox:  { weZero: null, auxZero: null, weAuxRatio: null, sensitivity: null },
 };
 // =============================
 
-const content = document.getElementById("content");
-let charts = {};
-let currentDevice = DEFAULT_DEVICE;
+const sidebar = document.getElementById("sidebar");
+let map = null;
+let layer3d = null;
+let badgeEls = {};
+let activeDevice = null;
 let refreshTimer = null;
-let chartWindowDays = 1;     // controlled by the date-range tabs (ignored while customRange is set)
-let customRange = null;      // { min, max } in ms, set via the calendar pickers; null = use chartWindowDays instead
-let lastRows = [];           // cached full record set for the current device, so range switches don't need a refetch
-
-// Single source of truth for what all the charts' x-axes should span —
-// either the picked custom {min,max}, or "now minus N days".
-function getChartRangeMs() {
-  if (customRange) return customRange;
-  const max = Date.now();
-  return { min: max - chartWindowDays * 24 * 60 * 60 * 1000, max };
-}
-
-function selectDateRange(days) {
-  chartWindowDays = days;
-  customRange = null;
-  document.querySelectorAll("#dateRangeTabs .tab-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.range == days));
-  ["rangeFrom", "rangeSep", "rangeTo"].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = "none";
-  });
-  if (lastRows.length) renderCharts(lastRows);
-}
-
-// Clicking "Custom" reveals the two native <input type="date"> pickers —
-// clicking either one pops up the browser's own calendar UI, no custom
-// widget needed. Defaults to the currently selected preset range so
-// there's a sane starting point instead of empty fields.
-function selectCustomRange() {
-  document.querySelectorAll("#dateRangeTabs .tab-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.range === "custom"));
-  const fromEl = document.getElementById("rangeFrom");
-  const toEl = document.getElementById("rangeTo");
-  const sepEl = document.getElementById("rangeSep");
-  fromEl.style.display = "inline-block";
-  toEl.style.display = "inline-block";
-  sepEl.style.display = "inline";
-  if (!fromEl.value || !toEl.value) {
-    const range = getChartRangeMs();
-    fromEl.value = new Date(range.min).toISOString().slice(0, 10);
-    toEl.value = new Date(range.max).toISOString().slice(0, 10);
-  }
-  applyCustomRange();
-}
-
-function applyCustomRange() {
-  const fromEl = document.getElementById("rangeFrom");
-  const toEl = document.getElementById("rangeTo");
-  if (!fromEl.value || !toEl.value) return;
-  const min = new Date(fromEl.value + "T00:00:00").getTime();
-  const max = new Date(toEl.value + "T23:59:59").getTime();
-  if (isNaN(min) || isNaN(max) || min >= max) return; // ignore an invalid/inverted range
-  customRange = { min, max };
-  if (lastRows.length) renderCharts(lastRows);
-}
 
 function fmt(v, digits) {
   if (v === undefined || v === null || v === "") return "—";
@@ -276,8 +241,6 @@ function fmt(v, digits) {
   return v;
 }
 
-// Device sends a real UTC unix timestamp once the SIM7028 has network
-// time; older/pre-sync records may have 0 or be missing it entirely.
 function fmtTime(ts) {
   if (!ts) return null;
   const d = new Date(ts * 1000);
@@ -296,7 +259,7 @@ function battColor(soc) {
 // Phone-style battery icon — the fill bar's width still tracks percentage,
 // but the number is now printed directly on top of the icon (with a dark
 // text-shadow so it stays legible whether it's sitting over the filled or
-// unfilled part of the bar). Keep in sync with overview.html.
+// unfilled part of the bar). Keep in sync with station.html.
 function batteryGaugeHtml(voltage, soc, opts) {
   opts = opts || {};
   const width = opts.width || 34;
@@ -317,40 +280,10 @@ function batteryGaugeHtml(voltage, soc, opts) {
   `;
 }
 
-function timeAgo(ts) {
-  if (!ts) return null;
-  const diffSec = Math.max(0, Math.floor(Date.now() / 1000) - ts);
-  if (diffSec < 60) return diffSec + "s ago";
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return diffMin + " min ago";
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return diffHr + "h ago";
-  return Math.floor(diffHr / 24) + "d ago";
-}
-
-// Four-state connection status ("Station Status") from a record's
-// timestamp — reflects the device status reported in the latest received
-// payload, not a continuous live connection. See ONLINE_MS/DELAYED_MS/
-// ISSUE_MS above. Deliberately separate from Cellular Signal (csqInfo()) —
-// they measure different things: this is payload freshness, that's radio
-// signal quality reported inside the latest payload.
-function connectionState(ts) {
-  if (!ts) return { state: "offline", label: "Offline — no data yet" };
-  const age = Date.now() - ts * 1000;
-  if (age <= ONLINE_MS) return { state: "online", label: "Online — last received " + timeAgo(ts) };
-  if (age <= DELAYED_MS) return { state: "delayed", label: "Delayed — last received " + timeAgo(ts) };
-  if (age <= ISSUE_MS) return { state: "issue", label: "Connection Issue — last received " + timeAgo(ts) };
-  return { state: "offline", label: "Offline — last received " + timeAgo(ts) };
-}
-
-const STATUS_TEXT = { online: "ONLINE", delayed: "DELAYED", issue: "CONNECTION ISSUE", offline: "OFFLINE" };
-function statusBadge(state) {
-  return `<span class="${state}-label">${STATUS_TEXT[state] || "OFFLINE"}</span>`;
-}
-
 // csq_rssi is the modem's 0-31 signal quality scale (99 = unknown/no
 // signal). Approx dBm for 1-30 uses the standard CSQ formula:
 // RSSI(dBm) = -113 + 2*CSQ. 0 and 31 are the table's fixed endpoints.
+// Keep in sync with station.html.
 function csqInfo(rssi) {
   if (rssi === undefined || rssi === null || rssi === 99) return { label: "Signal Unavailable", dbm: null };
   if (rssi === 0) return { label: "Extremely Weak", dbm: -113 };
@@ -362,8 +295,8 @@ function csqInfo(rssi) {
   return { label: "Very Good", dbm }; // 20-30
 }
 
-// Red-to-green ramp, one color per CSQ category. Keep in sync with
-// overview.html.
+// Red-to-green ramp, one color per CSQ category — used for both the map
+// badge signal icon and its legend swatches.
 function csqColor(rssi) {
   if (rssi === undefined || rssi === null || rssi === 99) return "#8b98a5"; // Signal Unavailable
   if (rssi === 0) return "#f16565";   // Extremely Weak
@@ -374,10 +307,10 @@ function csqColor(rssi) {
   return "#57d38c";                   // Excellent (31)
 }
 
-// WiFi-style icon: a dot plus up to 3 nested arcs — same one used on the
-// map's Sensor Status badges. Arc count is a rough magnitude cue; the
-// precise category is carried by color. Unavailable (99/no data) renders
-// as a dimmed icon with a slash through it. Keep in sync with overview.html.
+// WiFi-style icon: a dot plus up to 3 nested arcs. Arc count is a rough
+// magnitude cue (scaled off the raw 0-31 CSQ value); the precise category
+// is carried by color (see csqColor/csqInfo), not by arc count alone.
+// Unavailable (99/no data) renders as a dimmed icon with a slash through it.
 function signalIconHtml(rssi, size) {
   size = size || 16;
   const color = csqColor(rssi);
@@ -400,25 +333,80 @@ function signalIconHtml(rssi, size) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" class="signal-icon"><circle cx="12" cy="19" r="1.6" fill="${color}"/>${arcsSvg}</svg>`;
 }
 
-// AT+CEREG <stat> values (3GPP TS 27.007).
-function ceregLabel(stat) {
-  switch (stat) {
-    case 1: case 5: return "Registered";
-    case 2: return "Searching";
-    case 3: return "Denied";
-    case 0: return "Not Registered";
-    default: return stat === undefined || stat === null ? "—" : "Unknown";
+// Real EPA breakpoint tables (2024 revision), same as station.html's AQI
+// circle — used here to color-code each pollutant tab's map badges.
+// No PM1 table: EPA doesn't publish AQI breakpoints for PM1 (not a NAAQS
+// criteria pollutant), so PM1 badges never get an EPA color. Keep in sync
+// with station.html.
+const AQI_BREAKPOINTS = {
+  pm25: [ // µg/m³, 24-hr average
+    [0.0, 9.0, 0, 50], [9.1, 35.4, 51, 100], [35.5, 55.4, 101, 150],
+    [55.5, 125.4, 151, 200], [125.5, 225.4, 201, 300], [225.5, 325.4, 301, 500]
+  ],
+  pm10: [ // µg/m³, 24-hr average
+    [0, 54, 0, 50], [55, 154, 51, 100], [155, 254, 101, 150],
+    [255, 354, 151, 200], [355, 424, 201, 300], [425, 604, 301, 500]
+  ],
+  no2: [ // ppb, 1-hr average
+    [0, 53, 0, 50], [54, 100, 51, 100], [101, 360, 101, 150],
+    [361, 649, 151, 200], [650, 1249, 201, 300], [1250, 1649, 301, 400], [1650, 2049, 401, 500]
+  ],
+  o3: [ // ppb, 8-hr average
+    [0, 54, 0, 50], [55, 70, 51, 100], [71, 85, 101, 150], [86, 105, 151, 200], [106, 200, 201, 300]
+  ]
+};
+
+function aqiFromConcentration(conc, table) {
+  if (conc === null || conc === undefined || isNaN(conc)) return null;
+  for (const [cLo, cHi, aLo, aHi] of table) {
+    if (conc >= cLo && conc <= cHi) return Math.round(((aHi - aLo) / (cHi - cLo)) * (conc - cLo) + aLo);
   }
+  const last = table[table.length - 1];
+  return conc > last[1] ? 500 : null;
 }
 
-// AT+CGATT <state>: 1 = attached to the packet-switched (data) network.
-function cgattLabel(state) {
-  if (state === undefined || state === null) return "—";
-  return state == 1 ? "Attached" : "Detached";
+// Official EPA AQI category colors — returns null (no color) rather than
+// guessing when the concentration can't be computed (e.g. NO2/O3 still
+// uncalibrated).
+function aqiCategoryColor(conc, table) {
+  const aqi = aqiFromConcentration(conc, table);
+  if (aqi === null) return null;
+  if (aqi <= 50) return "#00e400";
+  if (aqi <= 100) return "#ffff00";
+  if (aqi <= 150) return "#ff7e00";
+  if (aqi <= 200) return "#ff0000";
+  if (aqi <= 300) return "#8f3f97";
+  return "#7e0023";
 }
 
-// Rolling window averages (not calendar-day/hour — anchored to "now" so
-// they stay meaningful whenever you look, not just right after midnight).
+// Converts raw WE/AUX ADC counts to ppb using GAS_CALIBRATION — null if
+// any constant is unset. Keep in sync with station.html.
+function rawToPpb(weRaw, auxRaw, cal) {
+  if (cal.weZero === null || cal.auxZero === null || cal.weAuxRatio === null || cal.sensitivity === null) return null;
+  if (typeof weRaw !== "number" || typeof auxRaw !== "number") return null;
+  return ((weRaw - cal.weZero) - cal.weAuxRatio * (auxRaw - cal.auxZero)) / cal.sensitivity;
+}
+
+// Four-state connection status ("Station Status") from a record's
+// timestamp — reflects the device status reported in the latest received
+// payload, not a continuous live connection. See ONLINE_MS/DELAYED_MS/
+// ISSUE_MS above.
+function connectionState(ts) {
+  if (!ts) return { state: "offline", label: "Offline — no data yet" };
+  const age = Date.now() - ts * 1000;
+  if (age <= ONLINE_MS) return { state: "online", label: "Online — last @ " + fmtTime(ts) };
+  if (age <= DELAYED_MS) return { state: "delayed", label: "Delayed — last @ " + fmtTime(ts) };
+  if (age <= ISSUE_MS) return { state: "issue", label: "Connection Issue — last @ " + fmtTime(ts) };
+  return { state: "offline", label: "Offline — last @ " + fmtTime(ts) };
+}
+
+const STATUS_TEXT = { online: "ONLINE", delayed: "DELAYED", issue: "CONNECTION ISSUE", offline: "OFFLINE" };
+function statusBadge(state) {
+  return `<span class="${state}-label">${STATUS_TEXT[state] || "OFFLINE"}</span>`;
+}
+
+// Rolling window averages (not calendar-day/hour) so they stay meaningful
+// at any time, not just right after midnight. Keep in sync with station.html.
 function windowAvg(rows, field, windowMs) {
   const cutoff = Date.now() - windowMs;
   const vals = rows
@@ -429,385 +417,448 @@ function windowAvg(rows, field, windowMs) {
 }
 const dailyAvg = (rows, field) => windowAvg(rows, field, 24 * 60 * 60 * 1000);
 const hourlyAvg = (rows, field) => windowAvg(rows, field, 60 * 60 * 1000);
-const avg8h = (rows, field) => windowAvg(rows, field, 8 * 60 * 60 * 1000);
+const fmtAvg = v => v === null ? "—" : v.toFixed(0);
 
-// Converts raw WE/AUX ADC counts to ppb using GAS_CALIBRATION — returns
-// null (not 0) if any constant is still unset, so "uncalibrated" and
-// "calibrated but reading zero" never get confused.
-function rawToPpb(weRaw, auxRaw, cal) {
-  if (cal.weZero === null || cal.auxZero === null || cal.weAuxRatio === null || cal.sensitivity === null) return null;
-  if (typeof weRaw !== "number" || typeof auxRaw !== "number") return null;
-  const compensatedWe = (weRaw - cal.weZero) - cal.weAuxRatio * (auxRaw - cal.auxZero);
-  return compensatedWe / cal.sensitivity;
+// Projects a MercatorCoordinate (real x/y/z, including altitude) through
+// MapLibre's mercator projection matrix straight to canvas pixels — this
+// is what lets the device-badge DOM elements track their true 3D position
+// (perspective, distance, etc.) as the camera orbits/tilts, without
+// MapLibre's own project()/Popup APIs (which only understand ground-level
+// lng/lat, no altitude).
+function projectMercatorToScreen(matrix, merc, canvas) {
+  const x = merc.x, y = merc.y, z = merc.z;
+  const clipX = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12];
+  const clipY = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
+  const clipW = matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15];
+  if (clipW <= 0) return null;
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (clipX / clipW * 0.5 + 0.5) * rect.width,
+    y: (1 - (clipY / clipW * 0.5 + 0.5)) * rect.height
+  };
 }
 
-// ---- US EPA Air Quality Index ----
-// Real EPA breakpoint tables (2024 revision) and the standard linear
-// interpolation formula — see https://www.airnow.gov/aqi/aqi-calculator/
-// AQI = ((AQIhi - AQIlo) / (Chi - Clo)) * (C - Clo) + AQIlo
-const AQI_BREAKPOINTS = {
-  pm25: [ // µg/m³, 24-hr average
-    [0.0, 9.0, 0, 50],
-    [9.1, 35.4, 51, 100],
-    [35.5, 55.4, 101, 150],
-    [55.5, 125.4, 151, 200],
-    [125.5, 225.4, 201, 300],
-    [225.5, 325.4, 301, 500]
-  ],
-  pm10: [ // µg/m³, 24-hr average
-    [0, 54, 0, 50],
-    [55, 154, 51, 100],
-    [155, 254, 101, 150],
-    [255, 354, 151, 200],
-    [355, 424, 201, 300],
-    [425, 604, 301, 500]
-  ],
-  no2: [ // ppb, 1-hr average
-    [0, 53, 0, 50],
-    [54, 100, 51, 100],
-    [101, 360, 101, 150],
-    [361, 649, 151, 200],
-    [650, 1249, 201, 300],
-    [1250, 1649, 301, 400],
-    [1650, 2049, 401, 500]
-  ],
-  o3: [ // ppb, 8-hr average (EPA also defines 1-hr breakpoints above AQI 300, not included here)
-    [0, 54, 0, 50],
-    [55, 70, 51, 100],
-    [71, 85, 101, 150],
-    [86, 105, 151, 200],
-    [106, 200, 201, 300]
-  ]
-};
-
-function aqiFromConcentration(conc, table) {
-  if (conc === null || conc === undefined || isNaN(conc)) return null;
-  for (const [cLo, cHi, aLo, aHi] of table) {
-    if (conc >= cLo && conc <= cHi) {
-      return Math.round(((aHi - aLo) / (cHi - cLo)) * (conc - cLo) + aLo);
-    }
-  }
-  const last = table[table.length - 1];
-  return conc > last[1] ? 500 : null;
-}
-
-// EPA methodology: overall AQI is the MAX of each pollutant's sub-index.
-// Any pollutant whose concentration is null (no data, or NO2/O3 still
-// uncalibrated per GAS_CALIBRATION) is simply left out of the max.
-function overallAqi({ pm25Avg, pm10Avg, no2Ppb, o3Ppb }) {
-  const subs = [
-    aqiFromConcentration(pm25Avg, AQI_BREAKPOINTS.pm25),
-    aqiFromConcentration(pm10Avg, AQI_BREAKPOINTS.pm10),
-    aqiFromConcentration(no2Ppb, AQI_BREAKPOINTS.no2),
-    aqiFromConcentration(o3Ppb, AQI_BREAKPOINTS.o3)
-  ].filter(v => v !== null);
-  if (!subs.length) return null;
-  return Math.max(...subs);
-}
-
-// Official EPA AQI category names/colors.
-function aqiCategory(aqi) {
-  if (aqi === null) return { label: "No Data", color: "var(--muted)" };
-  if (aqi <= 50) return { label: "Good", color: "#00e400" };
-  if (aqi <= 100) return { label: "Moderate", color: "#ffff00" };
-  if (aqi <= 150) return { label: "Unhealthy for Sensitive Groups", color: "#ff7e00" };
-  if (aqi <= 200) return { label: "Unhealthy", color: "#ff0000" };
-  if (aqi <= 300) return { label: "Very Unhealthy", color: "#8f3f97" };
-  return { label: "Hazardous", color: "#7e0023" };
-}
-
-const PANELS = ["aqi", "power"];
-function showPanel(name) {
-  PANELS.forEach(p => {
-    document.getElementById("panel_" + p).style.display = p === name ? "block" : "none";
+// Devices whose true 3D screen position lands within a few pixels of each
+// other (identical/near-identical lat+lon+height — the current placeholder
+// data, or two sensors mounted right next to each other) would otherwise
+// sit exactly on top of one another with only the last one drawn actually
+// clickable. This nudges same-spot badges apart horizontally so every one
+// stays visible and clickable, without touching the (still true-position)
+// 3D spheres underneath.
+function declusterPoints(points) {
+  const CLUSTER_PX = 26, SPACING_PX = 120;
+  const ids = Object.keys(points).filter(id => points[id]);
+  const clusters = [];
+  ids.forEach(id => {
+    const p = points[id];
+    let cluster = clusters.find(c => Math.hypot(c.x - p.x, c.y - p.y) < CLUSTER_PX);
+    if (!cluster) { cluster = { x: p.x, y: p.y, ids: [] }; clusters.push(cluster); }
+    cluster.ids.push(id);
   });
-  document.querySelectorAll(".tab-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.panel === name));
-  // Charts created while their panel was display:none report zero size —
-  // force a resize now that the panel is actually visible so they render
-  // at the right dimensions instead of staying collapsed.
-  requestAnimationFrame(() => Object.values(charts).forEach(c => c.resize()));
-}
-
-function buildLayout() {
-  content.innerHTML = `
-    <div class="station-info" id="stationInfo"></div>
-    <div class="toolbar-row">
-      <div class="tab-switch">
-        <button class="tab-btn active" data-panel="aqi" onclick="showPanel('aqi')">Air Quality &amp; Environment</button>
-        <button class="tab-btn" data-panel="power" onclick="showPanel('power')">Power &amp; Connectivity</button>
-      </div>
-      <div class="range-select" id="dateRangeTabs">
-        <span class="range-label">Chart Range</span>
-        ${DATE_RANGE_OPTIONS_DAYS.map(d =>
-          `<button class="tab-btn${!customRange && d === chartWindowDays ? " active" : ""}" data-range="${d}" onclick="selectDateRange(${d})">${d}D</button>`
-        ).join("")}
-        <button class="tab-btn${customRange ? " active" : ""}" data-range="custom" onclick="selectCustomRange()">Custom</button>
-        <input type="date" id="rangeFrom" class="range-date" onchange="applyCustomRange()" style="display:${customRange ? "inline-block" : "none"};">
-        <span class="range-date-sep" id="rangeSep" style="display:${customRange ? "inline" : "none"};">to</span>
-        <input type="date" id="rangeTo" class="range-date" onchange="applyCustomRange()" style="display:${customRange ? "inline-block" : "none"};">
-      </div>
-    </div>
-    <div id="panel_aqi">
-      <div class="dashboard-top">
-        <div>
-          <div class="aqi-circle" id="aqiCircle"></div>
-          <div class="aqi-note">AQI from PM2.5/PM10 (EPA breakpoints). NO2/O3 shown as raw electrode readings — not yet calibrated to ppb, so excluded from AQI.</div>
-        </div>
-        <div class="stat-columns">
-          <div class="stat-row" id="statRowAqi"></div>
-          <div class="stat-row" id="statRowEnvironment"></div>
-        </div>
-      </div>
-      <div class="charts">
-        <div class="chart-box"><h3>PM2.5 (µg/m³)</h3><canvas id="chartPM25"></canvas></div>
-        <div class="chart-box"><h3>PM1 (µg/m³)</h3><canvas id="chartPM1"></canvas></div>
-        <div class="chart-box"><h3>PM10 (µg/m³)</h3><canvas id="chartPM10"></canvas></div>
-        <div class="chart-box"><h3>NO2 (raw ADC)</h3><canvas id="chartNO2"></canvas></div>
-        <div class="chart-box"><h3>O3 (raw ADC)</h3><canvas id="chartO3"></canvas></div>
-        <div class="chart-box"><h3>Temperature (°C)</h3><canvas id="chartTemp"></canvas></div>
-        <div class="chart-box"><h3>Humidity (%)</h3><canvas id="chartHum"></canvas></div>
-      </div>
-    </div>
-    <div id="panel_power" style="display:none;">
-      <h3 class="panel-subhead">Power</h3>
-      <div class="stat-row" id="statRowPower"></div>
-      <h3 class="panel-subhead">Network</h3>
-      <div class="panel-subnote">Network and signal information reflects the device status reported in the latest received payload and does not represent a continuous live connection.</div>
-      <div class="stat-row" id="statRowNetwork"></div>
-      <h3 class="panel-subhead">Data Transmission</h3>
-      <div class="stat-row" id="statRowTransmission"></div>
-      <div class="charts">
-        <div class="chart-box"><h3>Battery Voltage (V)</h3><canvas id="chartBatt"></canvas></div>
-        <div class="chart-box"><h3>Signal Quality (CSQ RSSI, 0-31, 99=no signal)</h3><canvas id="chartCSQ"></canvas></div>
-      </div>
-    </div>
-  `;
-}
-
-// x is a numeric linear scale (unix ms), not Chart.js's date/time scale,
-// so no date-adapter dependency is needed — min/max are pinned to
-// getChartRangeMs() (preset days or a custom picked range) and tick
-// labels are formatted manually, switching to a date+time format once
-// the window spans more than a day.
-function makeLineChart(canvasId, label, color) {
-  const ctx = document.getElementById(canvasId).getContext("2d");
-  const range = getChartRangeMs();
-  return new Chart(ctx, {
-    type: "line",
-    data: { datasets: [{ label, data: [], borderColor: color, backgroundColor: color + "33", tension: 0.25, pointRadius: 2 }] },
-    options: {
-      responsive: true,
-      animation: false,
-      parsing: false,
-      scales: {
-        x: {
-          type: "linear",
-          min: range.min,
-          max: range.max,
-          ticks: {
-            color: "#8b98a5", maxRotation: 0, autoSkip: true, maxTicksLimit: 6,
-            callback: v => {
-              const r = getChartRangeMs();
-              const spanDays = (r.max - r.min) / (24 * 60 * 60 * 1000);
-              const d = new Date(v);
-              return spanDays > 1
-                ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
-                : d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-            }
-          },
-          grid: { color: "#263140" }
-        },
-        y: { ticks: { color: "#8b98a5" }, grid: { color: "#263140" } }
-      },
-      plugins: { legend: { display: false } }
-    }
+  const spaced = {};
+  clusters.forEach(cluster => {
+    const n = cluster.ids.length;
+    cluster.ids.forEach((id, i) => {
+      spaced[id] = { x: cluster.x + (i - (n - 1) / 2) * SPACING_PX, y: cluster.y };
+    });
   });
+  return spaced;
 }
 
-function updateChart(chart, chartRows, field) {
-  chart.data.datasets[0].data = chartRows
-    .filter(r => r.timestamp && typeof r[field] === "number")
-    .map(r => ({ x: r.timestamp * 1000, y: r[field] }));
-  const range = getChartRangeMs();
-  chart.options.scales.x.min = range.min;
-  chart.options.scales.x.max = range.max;
-  chart.update();
+// A flat multiplier on absolute height (heightM * EXAGGERATION) blows up
+// fast for tall/standalone devices — e.g. data2's real 47m rooftop became
+// 235m at 5x, floating way above its own building. Instead, only exaggerate
+// the SPREAD between devices that share a building (same lat/lon), around
+// their group's mean height — that keeps the cluster anchored near the
+// real floor range while still pulling members clearly apart. A device
+// alone at its own coordinate (no siblings) always renders at its true,
+// unexaggerated height, since there's nothing to visually separate it from.
+function computeDisplayHeights(deviceLocations) {
+  const groups = {};
+  Object.entries(deviceLocations).forEach(([id, loc]) => {
+    const key = loc.lat.toFixed(5) + "," + loc.lon.toFixed(5);
+    (groups[key] = groups[key] || []).push(id);
+  });
+
+  const heights = {};
+  Object.values(groups).forEach(ids => {
+    const mean = ids.reduce((s, id) => s + (deviceLocations[id].heightM || 0), 0) / ids.length;
+    ids.forEach(id => {
+      const h = deviceLocations[id].heightM || 0;
+      heights[id] = ids.length > 1 ? mean + (h - mean) * HEIGHT_EXAGGERATION : h;
+    });
+  });
+  return heights;
 }
 
-function renderCharts(rows) {
-  const range = getChartRangeMs();
-  const chartRows = rows.filter(r => r.timestamp && r.timestamp * 1000 >= range.min && r.timestamp * 1000 <= range.max);
-
-  if (!charts.batt) {
-    charts.batt = makeLineChart("chartBatt", "Battery V", "#57d38c");
-    charts.csq = makeLineChart("chartCSQ", "CSQ RSSI", "#4fd1c5");
-    charts.pm25 = makeLineChart("chartPM25", "PM2.5", "#4fd1c5");
-    charts.pm1 = makeLineChart("chartPM1", "PM1", "#57d38c");
-    charts.pm10 = makeLineChart("chartPM10", "PM10", "#f0b429");
-    charts.no2 = makeLineChart("chartNO2", "NO2", "#f0b429");
-    charts.o3 = makeLineChart("chartO3", "O3", "#f16565");
-    charts.temp = makeLineChart("chartTemp", "Temp °C", "#f0b429");
-    charts.hum = makeLineChart("chartHum", "Humidity %", "#4fd1c5");
+// Renders a small stem + sphere at each device's true geographic altitude
+// using a Three.js scene layered into MapLibre's own WebGL context — the
+// standard technique for placing real 3D objects on a MapLibre map (see
+// MapLibre/Mapbox's "Add a 3D model" example). All device positions are
+// expressed in meters relative to one shared origin point to keep the
+// numbers small and precision-safe; horizontal offsets use a flat-earth
+// approximation, which is accurate at building/block scale.
+class Device3DLayer {
+  constructor(deviceLocations, onFrame) {
+    this.id = "device-3d-layer";
+    this.type = "custom";
+    this.renderingMode = "3d";
+    this.deviceLocations = deviceLocations;
+    this.onFrame = onFrame;
+    this.meshes = {};
   }
 
-  updateChart(charts.batt, chartRows, "batt_v");
-  updateChart(charts.csq, chartRows, "csq_rssi");
-  updateChart(charts.pm25, chartRows, "pm25");
-  updateChart(charts.pm1, chartRows, "pm1");
-  updateChart(charts.pm10, chartRows, "pm10");
-  updateChart(charts.no2, chartRows, "no2_we");
-  updateChart(charts.o3, chartRows, "ox_we");
-  updateChart(charts.temp, chartRows, "temp");
-  updateChart(charts.hum, chartRows, "hum");
+  onAdd(mapInstance, gl) {
+    this.map = mapInstance;
+    this.camera = new THREE.Camera();
+    this.scene = new THREE.Scene();
+    this.scene.add(new THREE.AmbientLight(0xffffff, 1.4));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+    sun.position.set(50, 80, 100);
+    this.scene.add(sun);
+
+    const ids = Object.keys(this.deviceLocations);
+    const origin = this.deviceLocations[ids[0]];
+    this.originMerc = maplibregl.MercatorCoordinate.fromLngLat([origin.lon, origin.lat], 0);
+    this.metersToMercator = this.originMerc.meterInMercatorCoordinateUnits();
+    this.displayHeights = computeDisplayHeights(this.deviceLocations);
+
+    ids.forEach(id => {
+      const loc = this.deviceLocations[id];
+      const dxM = (loc.lon - origin.lon) * 111320 * Math.cos(origin.lat * Math.PI / 180);
+      const dyM = (loc.lat - origin.lat) * 111320;
+      const dzM = this.displayHeights[id];
+
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(1.6, 16, 16),
+        new THREE.MeshStandardMaterial({ color: 0x8b98a5 })
+      );
+      sphere.position.set(dxM, -dyM, dzM);
+      this.scene.add(sphere);
+
+      if (dzM > 0.01) {
+        const stem = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.35, 0.35, dzM, 8),
+          new THREE.MeshBasicMaterial({ color: 0x263140, transparent: true, opacity: 0.85 })
+        );
+        stem.rotation.x = Math.PI / 2;
+        stem.position.set(dxM, -dyM, dzM / 2);
+        this.scene.add(stem);
+      }
+
+      this.meshes[id] = sphere;
+    });
+
+    this.renderer = new THREE.WebGLRenderer({ canvas: mapInstance.getCanvas(), context: gl, antialias: true });
+    this.renderer.autoClear = false;
+  }
+
+  setStatus(id, state) {
+    const sphere = this.meshes[id];
+    if (!sphere) return;
+    const colors = { online: 0x57d38c, delayed: 0xf0b429, issue: 0xf16565, offline: 0x8b98a5 };
+    const emissive = { online: 0x1c4a36, delayed: 0x4a3a10, issue: 0x4a1c1c, offline: 0x000000 };
+    sphere.material.color.set(colors[state] ?? colors.offline);
+    sphere.material.emissive.set(emissive[state] ?? emissive.offline);
+  }
+
+  render(gl, args) {
+    // MapLibre exposes the mercator projection matrix at
+    // args.defaultProjectionData.mainMatrix — this is the one meant to be
+    // used directly with raw MercatorCoordinate x/y/z (per MapLibre's own
+    // custom-layer example), unlike args.modelViewProjectionMatrix which
+    // uses a different convention and produces wrong screen positions here.
+    const matrix = args.defaultProjectionData.mainMatrix;
+    const m = new THREE.Matrix4().fromArray(matrix);
+    const l = new THREE.Matrix4()
+      .makeTranslation(this.originMerc.x, this.originMerc.y, this.originMerc.z)
+      .scale(new THREE.Vector3(this.metersToMercator, -this.metersToMercator, this.metersToMercator));
+
+    this.camera.projectionMatrix = m.multiply(l);
+    this.renderer.resetState();
+    this.renderer.render(this.scene, this.camera);
+
+    if (this.onFrame) this.onFrame(matrix);
+    this.map.triggerRepaint();
+  }
 }
 
-async function loadData() {
+function buildMap() {
+  const locs = Object.values(DEVICE_LOCATIONS);
+  map = new maplibregl.Map({
+    container: "map",
+    style: "https://tiles.openfreemap.org/styles/liberty",
+    center: locs.length ? [locs[0].lon, locs[0].lat] : [0, 0],
+    zoom: 16,
+    pitch: 60,
+    bearing: -17,
+    antialias: true
+  });
+  map.addControl(new maplibregl.NavigationControl());
+
+  const overlay = document.getElementById("marker-overlay");
+  const canvas = map.getCanvas();
+
+  Object.entries(DEVICE_LOCATIONS).forEach(([id, loc]) => {
+    const el = document.createElement("div");
+    el.className = "device-badge-3d";
+    el.dataset.device = id;
+    el.title = `${id} — ${loc.location || ""} — ${loc.floor || ""}${loc.heightM ? ` (~${loc.heightM}m)` : ""}`;
+    el.innerHTML = `
+      <div class="badge-main"><span class="dot offline"></span><span class="badge-text"></span><span class="badge-signal-icon"></span></div>
+      <div class="badge-sub"></div>
+    `;
+    el.addEventListener("click", () => focusDevice(id));
+    overlay.appendChild(el);
+    badgeEls[id] = el;
+  });
+
+  const displayHeights = computeDisplayHeights(DEVICE_LOCATIONS);
+  layer3d = new Device3DLayer(DEVICE_LOCATIONS, matrix => {
+    const points = {};
+    Object.entries(DEVICE_LOCATIONS).forEach(([id, loc]) => {
+      const merc = maplibregl.MercatorCoordinate.fromLngLat([loc.lon, loc.lat], displayHeights[id]);
+      points[id] = projectMercatorToScreen(matrix, merc, canvas);
+    });
+    const spaced = declusterPoints(points);
+
+    Object.keys(DEVICE_LOCATIONS).forEach(id => {
+      const el = badgeEls[id];
+      if (!el) return;
+      const p = spaced[id];
+      if (!p) { el.style.display = "none"; return; }
+      el.style.display = "flex";
+      el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -50%)`;
+    });
+  });
+  map.on("load", () => map.addLayer(layer3d));
+
+  const bounds = new maplibregl.LngLatBounds();
+  locs.forEach(loc => bounds.extend([loc.lon, loc.lat]));
+  map.fitBounds(bounds, { padding: 100, maxZoom: 16 });
+}
+
+function focusDevice(id) {
+  activeDevice = id;
+  const loc = DEVICE_LOCATIONS[id];
+  if (loc && map) {
+    map.flyTo({ center: [loc.lon, loc.lat], zoom: 18, pitch: 60 });
+  }
+  document.querySelectorAll(".device-card").forEach(el => {
+    el.classList.toggle("active", el.dataset.device === id);
+  });
+  document.querySelectorAll(".device-badge-3d").forEach(el => {
+    el.classList.toggle("active", el.dataset.device === id);
+  });
+}
+
+async function fetchDevice(id) {
   try {
-    const res = await fetch(DEVICES[currentDevice], { cache: "no-store" });
+    const res = await fetch(DEVICES[id], { cache: "no-store" });
     if (!res.ok) throw new Error("HTTP " + res.status);
     const json = await res.json();
-
-    if (!json) {
-      content.innerHTML = `<div class="empty">No records in Firebase yet.<br>This usually means the device hasn't successfully posted (check cellular/antenna connection).</div>`;
-      charts = {};
-      return;
-    }
-
+    if (!json) return { id, rows: [] };
     const keys = Object.keys(json).sort();
-    const rows = keys.map(k => ({ key: k, ...json[k] }));
-    const latest = rows[rows.length - 1];
-    const latestTime = fmtTime(latest.timestamp);
-
-    if (!content.querySelector("#aqiCircle")) buildLayout();
-
-    // ---- Station identity ----
-    const loc = DEVICE_LOCATIONS[currentDevice] || {};
-
-    const cs = connectionState(latest.timestamp);
-    const dotClass = cs.state, connLabel = cs.label;
-
-    document.getElementById("stationInfo").innerHTML = `
-      <div class="station-name">${currentDevice}</div>
-      <div class="station-detail"><span class="label">Location</span><span class="value">${loc.location || "—"}</span></div>
-      <div class="station-detail"><span class="label">Floor</span><span class="value">${loc.floor || "—"}${loc.heightM ? ` (~${loc.heightM}m)` : ""}</span></div>
-      <div style="margin-left:auto; display:flex; align-items:center; gap:24px;">
-        <div class="status-indicator">
-          <span class="dot ${dotClass}" title="${connLabel}"></span>
-          ${statusBadge(dotClass)}
-        </div>
-        ${batteryGaugeHtml(latest.batt_v, latest.batt_soc, { width: 38, height: 18, fontSize: 10, voltFontSize: 13 })}
-        <div class="station-detail"><span class="label">Last Connection</span><span class="value">${latestTime || "—"}</span></div>
-      </div>
-    `;
-
-    // ---- AQI ----
-    // PM2.5/PM10 use 24-hr averages per EPA methodology. NO2 uses a 1-hr
-    // average (EPA's primary NO2 averaging period); O3 uses an 8-hr average
-    // of the OX (oxidant) electrode with the NO2 contribution subtracted
-    // out (OX responds to NO2 as well as O3 — see GAS_CALIBRATION notes),
-    // corrected against a 1-hr NO2 ppb for simplicity.
-    const avgPm25 = dailyAvg(rows, "pm25");
-    const avgPm10 = dailyAvg(rows, "pm10");
-    const avgPm1 = dailyAvg(rows, "pm1");
-    const avgNo2Hr = hourlyAvg(rows, "no2_we");
-    const avgO3Hr = hourlyAvg(rows, "ox_we");
-
-    const no2Ppb = rawToPpb(hourlyAvg(rows, "no2_we"), hourlyAvg(rows, "no2_aux"), GAS_CALIBRATION.no2);
-    const oxPpb = rawToPpb(avg8h(rows, "ox_we"), avg8h(rows, "ox_aux"), GAS_CALIBRATION.ox);
-    const o3Ppb = (oxPpb !== null && no2Ppb !== null) ? Math.max(0, oxPpb - no2Ppb) : null;
-
-    const aqi = overallAqi({ pm25Avg: avgPm25, pm10Avg: avgPm10, no2Ppb, o3Ppb });
-    const cat = aqiCategory(aqi);
-    const gasCalibrated = GAS_CALIBRATION.no2.sensitivity !== null && GAS_CALIBRATION.ox.sensitivity !== null;
-
-    document.getElementById("aqiCircle").innerHTML = `
-      <div class="aqi-value" style="color:${cat.color}">${aqi === null ? "—" : aqi}</div>
-      <div class="aqi-index-label">AQI</div>
-      <div class="aqi-category" style="color:${cat.color}">${cat.label}</div>
-    `;
-    document.getElementById("aqiCircle").style.borderColor = cat.color;
-    const aqiNoteEl = document.querySelector(".aqi-note");
-    if (aqiNoteEl) {
-      aqiNoteEl.textContent = gasCalibrated
-        ? "AQI from PM2.5, PM10, NO2, O3 (EPA breakpoints)."
-        : "AQI from PM2.5/PM10 only (EPA breakpoints). NO2/O3 raw electrode readings aren't calibrated to ppb yet — set GAS_CALIBRATION to include them.";
-    }
-
-    // ---- "Air Quality" panel: pollutants (alongside the AQI circle) ----
-    document.getElementById("statRowAqi").innerHTML = `
-      <div class="card"><div class="label">PM2.5</div><div class="value">${fmt(latest.pm25, 0)}<span class="unit">µg/m³</span></div><div class="sub">24h avg: ${avgPm25 === null ? "—" : avgPm25.toFixed(0)}</div></div>
-      <div class="card"><div class="label">PM1</div><div class="value">${fmt(latest.pm1, 0)}<span class="unit">µg/m³</span></div><div class="sub">24h avg: ${avgPm1 === null ? "—" : avgPm1.toFixed(0)}</div></div>
-      <div class="card"><div class="label">PM10</div><div class="value">${fmt(latest.pm10, 0)}<span class="unit">µg/m³</span></div><div class="sub">24h avg: ${avgPm10 === null ? "—" : avgPm10.toFixed(0)}</div></div>
-      <div class="card"><div class="label">NO2 (raw)</div><div class="value">${fmt(latest.no2_we, 0)}</div><div class="sub">1h avg: ${avgNo2Hr === null ? "—" : avgNo2Hr.toFixed(0)}</div></div>
-      <div class="card"><div class="label">O3 (raw)</div><div class="value">${fmt(latest.ox_we, 0)}</div><div class="sub">1h avg: ${avgO3Hr === null ? "—" : avgO3Hr.toFixed(0)}</div></div>
-    `;
-
-    // ---- "Environment" panel ----
-    document.getElementById("statRowEnvironment").innerHTML = `
-      <div class="card"><div class="label">Temperature</div><div class="value">${fmt(latest.temp, 1)}<span class="unit">°C</span></div></div>
-      <div class="card"><div class="label">Humidity</div><div class="value">${fmt(latest.hum, 0)}<span class="unit">%</span></div></div>
-    `;
-
-    // ---- "Power" panel ----
-    document.getElementById("statRowPower").innerHTML = `
-      <div class="card"><div class="label">Battery %</div><div class="value">${fmt(latest.batt_soc, 0)}<span class="unit">%</span></div></div>
-      <div class="card"><div class="label">Battery Voltage</div><div class="value">${fmt(latest.batt_v, 2)}<span class="unit">V</span></div></div>
-    `;
-
-    // ---- "Connectivity" panel: Network + Data Transmission ----
-    // Cellular Signal always shows the latest reported CSQ, independent of
-    // Station Status — a station can go offline/delayed while its last
-    // reported signal was fine (or bad), and that combination is itself a
-    // useful diagnostic, so this never disappears when the station isn't
-    // "online" — it just relabels itself "Reported X ago" instead of
-    // "Latest transmission".
-    const csq = csqInfo(latest.csq_rssi);
-    const signalAge = dotClass === "online" ? "Latest transmission" : (latest.timestamp ? "Reported " + timeAgo(latest.timestamp) : "—");
-    document.getElementById("statRowNetwork").innerHTML = `
-      <div class="card">
-        <div class="label">Cellular Signal</div>
-        <div class="value value-with-icon">${csq.label} ${signalIconHtml(latest.csq_rssi, 36)}</div>
-        <div class="sub">${csq.dbm !== null ? csq.dbm + " dBm · CSQ " + fmt(latest.csq_rssi, 0) : "CSQ " + fmt(latest.csq_rssi, 0)}</div>
-        <div class="sub">${signalAge}</div>
-      </div>
-      <div class="card"><div class="label">Network Registration</div><div class="value">${ceregLabel(latest.cereg_stat)}</div></div>
-      <div class="card"><div class="label">Data Network</div><div class="value">${cgattLabel(latest.cgatt)}</div></div>
-    `;
-    const recent = rows.slice(-ROLLING_WINDOW);
-    const successCount = recent.filter(r => r.last_post_ok == 1).length;
-    document.getElementById("statRowTransmission").innerHTML = `
-      <div class="card"><div class="label">Last Upload</div><div class="value">${timeAgo(latest.timestamp) || "—"}</div></div>
-      <div class="card"><div class="label">Upload Status</div><div class="value">${latest.last_post_ok == 1 ? "Successful" : "Failed"}</div></div>
-      <div class="card"><div class="label">HTTP Status</div><div class="value">${fmt(latest.last_http_status, 0)}</div></div>
-      <div class="card"><div class="label">Pending Records</div><div class="value">${fmt(latest.pending_queue, 0)}</div></div>
-      <div class="card"><div class="label">Comm Success</div><div class="value">${recent.length ? Math.round(successCount / recent.length * 100) : "—"}<span class="unit">%</span></div><div class="sub">${recent.length ? successCount + "/" + recent.length + " sends" : "no data"}</div></div>
-    `;
-
-   // ---- Charts ----
-    lastRows = rows;
-    renderCharts(rows);
-
+    return { id, rows: keys.map(k => ({ key: k, ...json[k] })) };
   } catch (err) {
-    content.innerHTML = `<div class="empty">Fetch failed: ${err.message}</div>`;
+    return { id, rows: [], error: err.message };
   }
 }
 
-function switchDevice(name) {
-  currentDevice = name;
-  charts = {};                          // old canvases are gone with buildLayout()'s next call
-  lastRows = [];                        // avoid a stale-device flash if a range tab is clicked before the first fetch lands
-  content.innerHTML = `<div class="empty">Loading…</div>`;
-  if (refreshTimer) clearInterval(refreshTimer);
-  loadData();
-  refreshTimer = setInterval(loadData, REFRESH_MS);
+function renderSidebar(results) {
+  sidebar.innerHTML = results.map(({ id, rows, error }) => {
+    const loc = DEVICE_LOCATIONS[id] || {};
+    const latest = rows[rows.length - 1];
+
+    let dotClass = "offline", statusLabel = "Offline — no data yet";
+    if (latest && latest.timestamp) {
+      const cs = connectionState(latest.timestamp);
+      dotClass = cs.state;
+      statusLabel = cs.label;
+    } else if (error) {
+      statusLabel = "Offline — fetch error: " + error;
+    } else if (latest) {
+      statusLabel = "Offline — no device time yet (key " + latest.key.slice(-8) + ")";
+    }
+
+    const lastOk = latest ? latest.last_post_ok == 1 : null;
+    const csq = csqInfo(latest?.csq_rssi);
+
+    const soc = latest?.batt_soc;
+    const avgPm25 = dailyAvg(rows, "pm25");
+    const avgPm10 = dailyAvg(rows, "pm10");
+    const avgNo2 = dailyAvg(rows, "no2_we");
+    const avgO3 = dailyAvg(rows, "ox_we");
+
+    return `
+      <div class="device-card${activeDevice === id ? " active" : ""}" data-device="${id}" onclick="focusDevice('${id}')">
+        <div class="head">
+          <div>
+            <div class="name">${id}</div>
+            <div class="loc">${loc.location || "—"}<span class="floor">${loc.floor || ""}${loc.heightM ? ` (~${loc.heightM}m)` : ""}</span></div>
+          </div>
+          <div class="status-indicator">
+            <span class="dot ${dotClass}" title="${statusLabel}"></span>
+            ${statusBadge(dotClass)}
+          </div>
+        </div>
+        ${batteryGaugeHtml(latest?.batt_v, soc, { width: 44, height: 20, fontSize: 11, voltFontSize: 13 })}
+        <div class="pollutant-row">
+          <div class="pollutant"><div class="p-value">${fmt(latest?.pm25, 0)}</div><div class="p-label">PM2.5</div></div>
+          <div class="pollutant"><div class="p-value">${fmt(latest?.pm1, 0)}</div><div class="p-label">PM1</div></div>
+          <div class="pollutant"><div class="p-value">${fmt(latest?.pm10, 0)}</div><div class="p-label">PM10</div></div>
+          <div class="pollutant"><div class="p-value">${fmt(latest?.no2_we, 0)}</div><div class="p-label">NO2</div></div>
+          <div class="pollutant"><div class="p-value">${fmt(latest?.ox_we, 0)}</div><div class="p-label">O3</div></div>
+        </div>
+        <div class="environment-row">
+          <div class="pollutant"><div class="p-value">${fmt(latest?.temp, 1)}</div><div class="p-label">Temp °C</div></div>
+          <div class="pollutant"><div class="p-value">${fmt(latest?.hum, 0)}</div><div class="p-label">Humidity %</div></div>
+        </div>
+        <div class="daily-avg-row">
+          <span>PM2.5 24h avg: ${avgPm25 === null ? "—" : avgPm25.toFixed(0)}</span>
+          <span>PM10 24h avg: ${avgPm10 === null ? "—" : avgPm10.toFixed(0)}</span>
+          <span>NO2 24h avg: ${avgNo2 === null ? "—" : avgNo2.toFixed(0)}</span>
+          <span>O3 24h avg: ${avgO3 === null ? "—" : avgO3.toFixed(0)}</span>
+        </div>
+        <div class="comm-line">
+          Last send: <span class="${lastOk === true ? "ok-text" : lastOk === false ? "bad-text" : ""}">${lastOk === null ? "—" : (lastOk ? "OK" : "Failed")}${latest?.last_http_status ? " (" + latest.last_http_status + ")" : ""}</span><br>
+          Signal: ${csq.label}${csq.dbm !== null ? " (" + csq.dbm + " dBm · CSQ " + fmt(latest?.csq_rssi, 0) + ")" : ""}<br>
+          Pending: <span class="${latest?.pending_queue > 0 ? "bad-text" : "ok-text"}">${fmt(latest?.pending_queue, 0)}</span>
+        </div>
+        <a class="station-link" href="station.html?device=${id}" onclick="event.stopPropagation()">Station Details →</a>
+      </div>
+    `;
+  }).join("");
 }
 
-document.getElementById("refreshBtn").addEventListener("click", loadData);
+function updateDeviceStatus(results) {
+  results.forEach(({ id, rows }) => {
+    const latest = rows[rows.length - 1];
+    const state = latest && latest.timestamp ? connectionState(latest.timestamp).state : "offline";
+    if (layer3d) layer3d.setStatus(id, state);
+    const badge = badgeEls[id];
+    if (badge) {
+      const dot = badge.querySelector(".dot");
+      if (dot) dot.className = "dot " + state;
+    }
+  });
+}
 
-// Lets the sidebar's "Station Details →" link on overview.html jump
-// straight to a specific station instead of always opening the default.
-const requestedDevice = new URLSearchParams(window.location.search).get("device");
-switchDevice(DEVICES[requestedDevice] ? requestedDevice : DEFAULT_DEVICE);
+// ---- Map badge content mode ----
+// The badges always show name + height; the second line switches between
+// device health (Sensor Status tab) and a single pollutant's live reading
+// (per-pollutant tabs), driven by the metric tab bar above the map.
+const METRICS = [
+  { id: "status", label: "Sensor Status" },
+  { id: "pm1", label: "PM1" },
+  { id: "pm25", label: "PM2.5" },
+  { id: "pm10", label: "PM10" },
+  { id: "no2", label: "NO2" },
+  { id: "o3", label: "O3" }
+];
+let activeMetric = "status";
+let lastResults = [];
+
+function buildMetricTabs() {
+  const el = document.getElementById("metricTabs");
+  el.innerHTML = METRICS.map(m =>
+    `<button class="metric-tab${m.id === activeMetric ? " active" : ""}" data-metric="${m.id}" onclick="selectMetric('${m.id}')">${m.label}</button>`
+  ).join("");
+}
+
+function selectMetric(id) {
+  activeMetric = id;
+  document.querySelectorAll(".metric-tab").forEach(btn => btn.classList.toggle("active", btn.dataset.metric === id));
+  document.getElementById("signalLegend").style.display = id === "status" ? "block" : "none";
+  renderBadgeContent(lastResults);
+}
+
+// Pollutant tabs pair the most recent single reading with the period
+// average that's actually meaningful for that pollutant — 24h for PM
+// (matches the AQI/EPA methodology used elsewhere), 1h for NO2/O3 (their
+// raw electrode readings are noisier, so a longer window reads more like
+// a real recent trend than one instantaneous count). The badge color is
+// driven by that same average, run through the real EPA breakpoints —
+// PM2.5/PM10 always qualify (real µg/m³); NO2/O3 only get a color once
+// GAS_CALIBRATION has real constants (raw ADC counts can't be honestly
+// categorized); PM1 never gets an EPA color (no published breakpoints).
+function metricReadingDetailed(rows, latest) {
+  switch (activeMetric) {
+    case "pm1": {
+      const avg = dailyAvg(rows, "pm1");
+      return { latest: fmt(latest?.pm1, 0), unit: "µg/m³", avgLabel: "24h", avg: fmtAvg(avg), color: null };
+    }
+    case "pm25": {
+      const avg = dailyAvg(rows, "pm25");
+      return { latest: fmt(latest?.pm25, 0), unit: "µg/m³", avgLabel: "24h", avg: fmtAvg(avg), color: aqiCategoryColor(avg, AQI_BREAKPOINTS.pm25) };
+    }
+    case "pm10": {
+      const avg = dailyAvg(rows, "pm10");
+      return { latest: fmt(latest?.pm10, 0), unit: "µg/m³", avgLabel: "24h", avg: fmtAvg(avg), color: aqiCategoryColor(avg, AQI_BREAKPOINTS.pm10) };
+    }
+    case "no2": {
+      const avgWe = hourlyAvg(rows, "no2_we");
+      const ppb = rawToPpb(avgWe, hourlyAvg(rows, "no2_aux"), GAS_CALIBRATION.no2);
+      return { latest: fmt(latest?.no2_we, 0), unit: "raw", avgLabel: "1h", avg: fmtAvg(avgWe), color: aqiCategoryColor(ppb, AQI_BREAKPOINTS.no2) };
+    }
+    case "o3": {
+      const avgWe = hourlyAvg(rows, "ox_we");
+      const no2Ppb = rawToPpb(hourlyAvg(rows, "no2_we"), hourlyAvg(rows, "no2_aux"), GAS_CALIBRATION.no2);
+      const oxPpb = rawToPpb(avgWe, hourlyAvg(rows, "ox_aux"), GAS_CALIBRATION.ox);
+      const o3Ppb = (oxPpb !== null && no2Ppb !== null) ? Math.max(0, oxPpb - no2Ppb) : null;
+      return { latest: fmt(latest?.ox_we, 0), unit: "raw", avgLabel: "1h", avg: fmtAvg(avgWe), color: aqiCategoryColor(o3Ppb, AQI_BREAKPOINTS.o3) };
+    }
+    default: return null;
+  }
+}
+
+// Sensor Status keeps it minimal: name, height, status dot — no battery/
+// signal on the badge itself (still in the sidebar). Pollutant tabs show
+// no device name — just height + dot + large reading/avg text, and the
+// badge border tints to the pollutant's EPA category color.
+function renderBadgeContent(results) {
+  results.forEach(({ id, rows }) => {
+    const el = badgeEls[id];
+    if (!el) return;
+    const main = el.querySelector(".badge-text");
+    const sub = el.querySelector(".badge-sub");
+    const signalIcon = el.querySelector(".badge-signal-icon");
+    if (!main || !sub) return;
+    const loc = DEVICE_LOCATIONS[id] || {};
+    const latest = rows[rows.length - 1];
+
+    if (activeMetric === "status") {
+      main.textContent = `${id} · ~${loc.heightM || 0}m`;
+      sub.innerHTML = "";
+      el.style.removeProperty("--pollutant-color");
+      if (signalIcon) {
+        const csq = csqInfo(latest?.csq_rssi);
+        signalIcon.innerHTML = signalIconHtml(latest?.csq_rssi, 14);
+        signalIcon.title = `${csq.label}${csq.dbm !== null ? ` · ${csq.dbm} dBm` : ""}`;
+      }
+    } else {
+      main.textContent = `~${loc.heightM || 0}m`;
+      if (signalIcon) signalIcon.innerHTML = "";
+      const r = metricReadingDetailed(rows, latest);
+      sub.innerHTML = `<div><span class="badge-value-lg">${r.latest}</span><span class="badge-unit">${r.unit}</span></div><div class="badge-avgline">${r.avgLabel} avg ${r.avg}</div>`;
+      if (r.color) el.style.setProperty("--pollutant-color", r.color);
+      else el.style.removeProperty("--pollutant-color");
+    }
+  });
+}
+
+async function loadAll() {
+  const results = await Promise.all(Object.keys(DEVICES).map(fetchDevice));
+  lastResults = results;
+  renderSidebar(results);
+  updateDeviceStatus(results);
+  renderBadgeContent(results);
+}
+
+buildMetricTabs();
+buildMap();
+loadAll();
+refreshTimer = setInterval(loadAll, REFRESH_MS);
 </script>
 
 </body>

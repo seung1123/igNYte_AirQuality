@@ -126,7 +126,7 @@
   <div>
     <h1><img src="ignyte_logo.png" alt="igNYte" class="logo"> Air Quality Network</h1>
     <nav class="page-nav">
-      <a href="overview.html" class="page-tab">3D Air Quality Network Map</a>
+      <a href="index.html" class="page-tab">3D Air Quality Network Map</a>
       <a href="explorer.html" class="page-tab active">Data Explorer</a>
     </nav>
   </div>
@@ -193,14 +193,14 @@
 
 <script>
 // ====== CONFIGURE HERE ======
-// Same Firebase project/auth token and device map as index.html/overview.html.
+// Same Firebase project/auth token and device map as index.html/station.html.
 const AUTH = "SojVFn9WY98OBEf4rE1zhNkjpjvBVQATZkDnz7wM";
 const DEVICES = {
   data1: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data1.json?auth=${AUTH}`,
   data2: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data2.json?auth=${AUTH}`,
   data3: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data3.json?auth=${AUTH}`,
 };
-// Keep in sync with overview.html/index.html.
+// Keep in sync with index.html/station.html.
 const DEVICE_LOCATIONS = {
   data1: { lat: 40.6942, lon: -73.9866, location: "6 MetroTech Center, Brooklyn", floor: "6th Floor", heightM: 20 },
   data2: { lat: 40.6928, lon: -73.9876, location: "370 Jay Street, Brooklyn", floor: "Rooftop", heightM: 47 },
@@ -209,7 +209,7 @@ const DEVICE_LOCATIONS = {
 const ONLINE_MS = 7 * 60 * 1000;
 const DELAYED_MS = 10 * 60 * 1000;
 const ISSUE_MS = 20 * 60 * 1000;
-const HEIGHT_EXAGGERATION = 2.5; // see overview.html for the full rationale
+const HEIGHT_EXAGGERATION = 2.5; // see index.html for the full rationale
 const DATE_RANGE_OPTIONS_DAYS = [1, 3, 7, 30];
 const STATION_COLORS = ["#4fd1c5", "#57d38c", "#f0b429", "#f16565", "#8b5cf6", "#f97316"];
 const EXPORT_COLUMNS = [
@@ -247,7 +247,7 @@ function getExplorerRangeMs() {
   return { min: max - rangeWindowDays * 24 * 60 * 60 * 1000, max };
 }
 
-// ---- Station status (identical thresholds/logic to overview.html/index.html) ----
+// ---- Station status (identical thresholds/logic to index.html/station.html) ----
 function connectionState(ts) {
   if (!ts) return { state: "offline", label: "Offline — no data yet" };
   const age = Date.now() - ts * 1000;
@@ -257,7 +257,7 @@ function connectionState(ts) {
   return { state: "offline", label: "Offline" };
 }
 
-// ---- Map (ported from overview.html, Sensor Status view only) ----
+// ---- Map (ported from index.html, Sensor Status view only) ----
 function computeDisplayHeights(deviceLocations) {
   const groups = {};
   Object.entries(deviceLocations).forEach(([id, loc]) => {

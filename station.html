@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Air Quality Device — Live Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0b1015;
+    --panel: #141b22;
+    --panel2: #1b232c;
+    --border: #263140;
+    --text: #e6edf3;
+    --muted: #8b98a5;
+    --accent: #4fd1c5;
+    --warn: #f0b429;
+    --bad: #f16565;
+    --good: #57d38c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 24px;
+  }
+  h1 { font-size: 20px; margin: 0; display: flex; align-items: center; gap: 8px; }
+  h1 .logo { height: 30px; width: auto; }
+  .topbar {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
+  }
+  .page-nav { display: flex; gap: 4px; margin-top: 10px; }
+  .page-tab {
+    color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 500;
+    padding: 6px 12px; border-radius: 6px; border: 1px solid transparent; white-space: nowrap;
+  }
+  .page-tab:hover { color: var(--text); border-color: var(--border); }
+  .page-tab.active { color: var(--accent); background: var(--panel2); border-color: var(--border); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.online { background: var(--good); }
+  .dot.delayed { background: var(--warn); }
+  .dot.issue { background: var(--bad); }
+  .dot.offline { background: var(--muted); }
+  .status-indicator { display: flex; align-items: center; gap: 6px; }
+  .online-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--good); }
+  .delayed-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--warn); }
+  .issue-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--bad); }
+  .offline-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: var(--muted); }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 14px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  .station-info {
+    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 18px; margin-bottom: 16px;
+  }
+  .station-info .station-name { font-size: 20px; font-weight: 700; color: var(--accent); }
+  .station-info .station-detail { font-size: 13px; }
+  .station-info .station-detail .label { color: var(--muted); margin-right: 6px; }
+  .station-info .station-detail .value { color: var(--text); font-weight: 500; }
+  .batt-gauge-wrap { display: flex; align-items: center; gap: 8px; }
+  .battery-icon {
+    position: relative; border: 2px solid var(--muted); border-radius: 3px;
+    box-sizing: border-box; padding: 2px; flex-shrink: 0;
+  }
+  .battery-icon::after {
+    content: ""; position: absolute; right: -4px; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 45%; background: var(--muted); border-radius: 0 2px 2px 0;
+  }
+  .battery-fill { position: absolute; left: 2px; top: 2px; bottom: 2px; border-radius: 1px; transition: width 0.3s; }
+  .battery-pct-inline {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 0 1px rgba(0,0,0,0.9); line-height: 1;
+  }
+  .batt-gauge-volt { font-weight: 600; color: var(--text); font-size: 13px; }
+  .dashboard-top { display: flex; gap: 20px; margin-bottom: 24px; align-items: stretch; flex-wrap: wrap; }
+  .aqi-circle {
+    width: 190px; height: 190px; border-radius: 50%; flex-shrink: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border: 7px solid var(--border); background: var(--panel); margin: 0 auto;
+  }
+  .aqi-circle .aqi-value { font-size: 52px; font-weight: 800; line-height: 1; }
+  .aqi-circle .aqi-index-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 6px; }
+  .aqi-circle .aqi-category { font-size: 13px; font-weight: 700; margin-top: 6px; text-align: center; padding: 0 12px; }
+  .aqi-note { font-size: 10px; color: var(--muted); text-align: center; max-width: 190px; margin: 8px auto 0; line-height: 1.4; }
+  .stat-columns { flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 12px; justify-content: center; }
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .dashboard-top .stat-row { margin-bottom: 0; }
+  .toolbar-row {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 16px;
+  }
+  .toolbar-row .tab-switch { flex-shrink: 0; }
+  .toolbar-row .range-select { flex-shrink: 0; margin-left: auto; }
+  .tab-switch { display: flex; gap: 8px; }
+  .tab-btn {
+    background: var(--panel2); color: var(--muted); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 18px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .tab-btn:hover { color: var(--text); border-color: var(--accent); }
+  .tab-btn.active { color: var(--accent); border-color: var(--accent); background: var(--panel); }
+  .range-select { display: flex; justify-content: flex-start; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .range-select .range-label { font-size: 12px; color: var(--muted); font-weight: 600; margin-right: 2px; }
+  .range-select .tab-btn { padding: 6px 14px; }
+  .range-date {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 5px 10px; font-size: 12px; font-family: inherit; cursor: pointer;
+  }
+  .range-date:hover { border-color: var(--accent); }
+  .range-date::-webkit-calendar-picker-indicator { cursor: pointer; filter: invert(0.7); }
+  .range-date-sep { font-size: 12px; color: var(--muted); }
+  .panel-subhead {
+    font-size: 13px; color: var(--muted); font-weight: 600; margin: 0 0 4px 0;
+  }
+  .panel-subhead:not(:first-child) { margin-top: 20px; }
+  .panel-subnote { font-size: 11px; color: var(--muted); margin: 0 0 10px 0; line-height: 1.4; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .card .value { font-size: 22px; font-weight: 600; margin-top: 4px; }
+  .card .unit { font-size: 12px; color: var(--muted); margin-left: 4px; font-weight: 400; }
+  .card .sub { font-size: 10px; color: var(--muted); margin-top: 6px; }
+  .card .batt-gauge-wrap { margin-top: 6px; }
+  .card .value-with-icon { display: flex; align-items: center; gap: 6px; }
+  .signal-icon { display: block; }
+  .charts {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 16px; margin-bottom: 24px;
+  }
+  .chart-box {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
+  }
+  .chart-box h3 { margin: 0 0 8px 0; font-size: 13px; color: var(--muted); font-weight: 500; }
+  .chart-box canvas { max-height: 220px; }
+  .empty {
+    padding: 40px; text-align: center; color: var(--muted); font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1><img src="ignyte_logo.png" alt="igNYte" class="logo"> Air Quality Network</h1>
+    <nav class="page-nav">
+      <a href="index.html" class="page-tab">3D Air Quality Network Map</a>
+      <a href="explorer.html" class="page-tab">Data Explorer</a>
+    </nav>
+  </div>
+  <div style="display:flex; align-items:center; gap:14px;">
+    <button id="refreshBtn">Refresh now</button>
+  </div>
+</div>
+
+<div id="content">
+  <div class="empty">Loading…</div>
+</div>
+
+<script>
+// ====== CONFIGURE HERE ======
+// Same Firebase project/auth token, one endpoint per physical device -
+// data1/data3 are currently the ones actually sending; data2 is a known
+// gap right now (device not posting), left in the switcher so it just
+// shows "no records yet" until that gets fixed rather than being hidden.
+const AUTH = "SojVFn9WY98OBEf4rE1zhNkjpjvBVQATZkDnz7wM";
+const DEVICES = {
+  data1: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data1.json?auth=${AUTH}`,
+  data2: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data2.json?auth=${AUTH}`,
+  data3: `https://ignyte-b3d05-default-rtdb.firebaseio.com/data3.json?auth=${AUTH}`,
+};
+const DEFAULT_DEVICE = "data1";   // data2's device isn't sending right now
+const REFRESH_MS = 15000;
+const DATE_RANGE_OPTIONS_DAYS = [1, 3, 7, 30]; // shown as the date-range tabs
+// Tuned to a ~5min device send interval — retune if that interval changes.
+// Keep in sync with index.html.
+//   <= ONLINE_MS            -> online            (green)
+//   ONLINE_MS..DELAYED_MS   -> delayed           (yellow)
+//   DELAYED_MS..ISSUE_MS    -> connection issue  (red)
+//   > ISSUE_MS              -> offline           (gray)
+const ONLINE_MS = 7 * 60 * 1000;
+const DELAYED_MS = 10 * 60 * 1000;
+const ISSUE_MS = 20 * 60 * 1000;
+const ROLLING_WINDOW = 20;           // matches index.html — how many recent records the comm success % covers
+// SIM7028 modem has no GPS hardware, so lat/lon are manual placeholders —
+// fill in each device's real coordinates once known. Keep in sync with
+// index.html's DEVICE_LOCATIONS. heightM is a rough guess (not
+// measured), shown in the station info bar below.
+const DEVICE_LOCATIONS = {
+  data1: { lat: 40.6942, lon: -73.9866, location: "6 MetroTech Center, Brooklyn", floor: "6th Floor", heightM: 20 },
+  data2: { lat: 40.6928, lon: -73.9876, location: "370 Jay Street, Brooklyn", floor: "Rooftop", heightM: 47 },
+  data3: { lat: 40.6942, lon: -73.9866, location: "6 MetroTech Center, Brooklyn", floor: "6th Floor", heightM: 20 },
+};
+// Electrochemical NO2/O3 sensors (e.g. Alphasense NO2-B43F / OX-B431) report
+// raw ADC counts on a working (WE) and auxiliary (AUX) electrode — converting
+// to ppb needs per-unit constants from that sensor's individual calibration
+// certificate (they're NOT the same across units, even the same model).
+//   ppb = ((WE_raw - weZero) - weAuxRatio * (AUX_raw - auxZero)) / sensitivity
+// The OX (oxidant) electrode responds to NO2 as well as O3, so real O3 ppb
+// is computed as OX_ppb - NO2_ppb (standard correction for this sensor type).
+// Leave any value `null` until you have it from the certificate — AQI and
+// ppb display for that gas will keep showing "—" rather than a fabricated
+// number computed from an uncalibrated raw count.
+const GAS_CALIBRATION = {
+  no2: { weZero: null, auxZero: null, weAuxRatio: null, sensitivity: null }, // sensitivity in counts/ppb
+  ox:  { weZero: null, auxZero: null, weAuxRatio: null, sensitivity: null }, // "oxidant" (NO2+O3) electrode
+};
+// =============================
+
+const content = document.getElementById("content");
+let charts = {};
+let currentDevice = DEFAULT_DEVICE;
+let refreshTimer = null;
+let chartWindowDays = 1;     // controlled by the date-range tabs (ignored while customRange is set)
+let customRange = null;      // { min, max } in ms, set via the calendar pickers; null = use chartWindowDays instead
+let lastRows = [];           // cached full record set for the current device, so range switches don't need a refetch
+
+// Single source of truth for what all the charts' x-axes should span —
+// either the picked custom {min,max}, or "now minus N days".
+function getChartRangeMs() {
+  if (customRange) return customRange;
+  const max = Date.now();
+  return { min: max - chartWindowDays * 24 * 60 * 60 * 1000, max };
+}
+
+function selectDateRange(days) {
+  chartWindowDays = days;
+  customRange = null;
+  document.querySelectorAll("#dateRangeTabs .tab-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.range == days));
+  ["rangeFrom", "rangeSep", "rangeTo"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = "none";
+  });
+  if (lastRows.length) renderCharts(lastRows);
+}
+
+// Clicking "Custom" reveals the two native <input type="date"> pickers —
+// clicking either one pops up the browser's own calendar UI, no custom
+// widget needed. Defaults to the currently selected preset range so
+// there's a sane starting point instead of empty fields.
+function selectCustomRange() {
+  document.querySelectorAll("#dateRangeTabs .tab-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.range === "custom"));
+  const fromEl = document.getElementById("rangeFrom");
+  const toEl = document.getElementById("rangeTo");
+  const sepEl = document.getElementById("rangeSep");
+  fromEl.style.display = "inline-block";
+  toEl.style.display = "inline-block";
+  sepEl.style.display = "inline";
+  if (!fromEl.value || !toEl.value) {
+    const range = getChartRangeMs();
+    fromEl.value = new Date(range.min).toISOString().slice(0, 10);
+    toEl.value = new Date(range.max).toISOString().slice(0, 10);
+  }
+  applyCustomRange();
+}
+
+function applyCustomRange() {
+  const fromEl = document.getElementById("rangeFrom");
+  const toEl = document.getElementById("rangeTo");
+  if (!fromEl.value || !toEl.value) return;
+  const min = new Date(fromEl.value + "T00:00:00").getTime();
+  const max = new Date(toEl.value + "T23:59:59").getTime();
+  if (isNaN(min) || isNaN(max) || min >= max) return; // ignore an invalid/inverted range
+  customRange = { min, max };
+  if (lastRows.length) renderCharts(lastRows);
+}
+
+function fmt(v, digits) {
+  if (v === undefined || v === null || v === "") return "—";
+  if (typeof v === "number" && digits !== undefined) return v.toFixed(digits);
+  return v;
+}
+
+// Device sends a real UTC unix timestamp once the SIM7028 has network
+// time; older/pre-sync records may have 0 or be missing it entirely.
+function fmtTime(ts) {
+  if (!ts) return null;
+  const d = new Date(ts * 1000);
+  return d.toLocaleString(undefined, {
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"
+  });
+}
+
+function battColor(soc) {
+  if (soc === undefined || soc === null) return "var(--muted)";
+  if (soc < 20) return "var(--bad)";
+  if (soc < 50) return "var(--warn)";
+  return "var(--good)";
+}
+
+// Phone-style battery icon — the fill bar's width still tracks percentage,
+// but the number is now printed directly on top of the icon (with a dark
+// text-shadow so it stays legible whether it's sitting over the filled or
+// unfilled part of the bar). Keep in sync with index.html.
+function batteryGaugeHtml(voltage, soc, opts) {
+  opts = opts || {};
+  const width = opts.width || 34;
+  const height = opts.height || 16;
+  const fontSize = opts.fontSize || Math.round(height * 0.6);
+  const voltFontSize = opts.voltFontSize || 12;
+  const pct = soc === undefined || soc === null ? 0 : Math.max(0, Math.min(100, soc));
+  const pctText = soc === undefined || soc === null ? "—" : Math.round(soc) + "%";
+  const voltText = voltage === undefined || voltage === null ? "—" : voltage.toFixed(2) + "V";
+  return `
+    <div class="batt-gauge-wrap">
+      <div class="battery-icon" style="width:${width}px;height:${height}px;">
+        <div class="battery-fill" style="width:${pct}%; background:${battColor(soc)};"></div>
+        <span class="battery-pct-inline" style="font-size:${fontSize}px;">${pctText}</span>
+      </div>
+      <span class="batt-gauge-volt" style="font-size:${voltFontSize}px;">${voltText}</span>
+    </div>
+  `;
+}
+
+function timeAgo(ts) {
+  if (!ts) return null;
+  const diffSec = Math.max(0, Math.floor(Date.now() / 1000) - ts);
+  if (diffSec < 60) return diffSec + "s ago";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return diffMin + " min ago";
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return diffHr + "h ago";
+  return Math.floor(diffHr / 24) + "d ago";
+}
+
+// Four-state connection status ("Station Status") from a record's
+// timestamp — reflects the device status reported in the latest received
+// payload, not a continuous live connection. See ONLINE_MS/DELAYED_MS/
+// ISSUE_MS above. Deliberately separate from Cellular Signal (csqInfo()) —
+// they measure different things: this is payload freshness, that's radio
+// signal quality reported inside the latest payload.
+function connectionState(ts) {
+  if (!ts) return { state: "offline", label: "Offline — no data yet" };
+  const age = Date.now() - ts * 1000;
+  if (age <= ONLINE_MS) return { state: "online", label: "Online — last received " + timeAgo(ts) };
+  if (age <= DELAYED_MS) return { state: "delayed", label: "Delayed — last received " + timeAgo(ts) };
+  if (age <= ISSUE_MS) return { state: "issue", label: "Connection Issue — last received " + timeAgo(ts) };
+  return { state: "offline", label: "Offline — last received " + timeAgo(ts) };
+}
+
+const STATUS_TEXT = { online: "ONLINE", delayed: "DELAYED", issue: "CONNECTION ISSUE", offline: "OFFLINE" };
+function statusBadge(state) {
+  return `<span class="${state}-label">${STATUS_TEXT[state] || "OFFLINE"}</span>`;
+}
+
+// csq_rssi is the modem's 0-31 signal quality scale (99 = unknown/no
+// signal). Approx dBm for 1-30 uses the standard CSQ formula:
+// RSSI(dBm) = -113 + 2*CSQ. 0 and 31 are the table's fixed endpoints.
+function csqInfo(rssi) {
+  if (rssi === undefined || rssi === null || rssi === 99) return { label: "Signal Unavailable", dbm: null };
+  if (rssi === 0) return { label: "Extremely Weak", dbm: -113 };
+  if (rssi === 31) return { label: "Excellent", dbm: -51 };
+  const dbm = -113 + 2 * rssi;
+  if (rssi <= 9) return { label: "Weak", dbm };
+  if (rssi <= 14) return { label: "Fair", dbm };
+  if (rssi <= 19) return { label: "Good", dbm };
+  return { label: "Very Good", dbm }; // 20-30
+}
+
+// Red-to-green ramp, one color per CSQ category. Keep in sync with
+// index.html.
+function csqColor(rssi) {
+  if (rssi === undefined || rssi === null || rssi === 99) return "#8b98a5"; // Signal Unavailable
+  if (rssi === 0) return "#f16565";   // Extremely Weak
+  if (rssi <= 9) return "#f2884a";    // Weak
+  if (rssi <= 14) return "#f0b429";   // Fair
+  if (rssi <= 19) return "#c7d436";   // Good
+  if (rssi <= 30) return "#8bd446";   // Very Good
+  return "#57d38c";                   // Excellent (31)
+}
+
+// WiFi-style icon: a dot plus up to 3 nested arcs — same one used on the
+// map's Sensor Status badges. Arc count is a rough magnitude cue; the
+// precise category is carried by color. Unavailable (99/no data) renders
+// as a dimmed icon with a slash through it. Keep in sync with index.html.
+function signalIconHtml(rssi, size) {
+  size = size || 16;
+  const color = csqColor(rssi);
+  if (rssi === undefined || rssi === null || rssi === 99) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" class="signal-icon">
+      <circle cx="12" cy="19" r="1.6" fill="${color}" opacity="0.5"/>
+      <path d="M8 15.5 A6 6 0 0 1 16 15.5" stroke="${color}" stroke-width="2" fill="none" opacity="0.35"/>
+      <path d="M4.5 11.5 A11 11 0 0 1 19.5 11.5" stroke="${color}" stroke-width="2" fill="none" opacity="0.35"/>
+      <path d="M1 7.5 A17 17 0 0 1 23 7.5" stroke="${color}" stroke-width="2" fill="none" opacity="0.35"/>
+      <line x1="2" y1="2" x2="22" y2="22" stroke="${color}" stroke-width="2.2"/>
+    </svg>`;
+  }
+  const tier = Math.max(0, Math.min(3, Math.ceil((rssi / 31) * 3)));
+  const arcs = [
+    { d: "M8 15.5 A6 6 0 0 1 16 15.5", level: 1 },
+    { d: "M4.5 11.5 A11 11 0 0 1 19.5 11.5", level: 2 },
+    { d: "M1 7.5 A17 17 0 0 1 23 7.5", level: 3 }
+  ];
+  const arcsSvg = arcs.map(a => `<path d="${a.d}" stroke="${a.level <= tier ? color : "var(--border)"}" stroke-width="2" fill="none"/>`).join("");
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" class="signal-icon"><circle cx="12" cy="19" r="1.6" fill="${color}"/>${arcsSvg}</svg>`;
+}
+
+// AT+CEREG <stat> values (3GPP TS 27.007).
+function ceregLabel(stat) {
+  switch (stat) {
+    case 1: case 5: return "Registered";
+    case 2: return "Searching";
+    case 3: return "Denied";
+    case 0: return "Not Registered";
+    default: return stat === undefined || stat === null ? "—" : "Unknown";
+  }
+}
+
+// AT+CGATT <state>: 1 = attached to the packet-switched (data) network.
+function cgattLabel(state) {
+  if (state === undefined || state === null) return "—";
+  return state == 1 ? "Attached" : "Detached";
+}
+
+// Rolling window averages (not calendar-day/hour — anchored to "now" so
+// they stay meaningful whenever you look, not just right after midnight).
+function windowAvg(rows, field, windowMs) {
+  const cutoff = Date.now() - windowMs;
+  const vals = rows
+    .filter(r => r.timestamp && r.timestamp * 1000 >= cutoff && typeof r[field] === "number")
+    .map(r => r[field]);
+  if (!vals.length) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+const dailyAvg = (rows, field) => windowAvg(rows, field, 24 * 60 * 60 * 1000);
+const hourlyAvg = (rows, field) => windowAvg(rows, field, 60 * 60 * 1000);
+const avg8h = (rows, field) => windowAvg(rows, field, 8 * 60 * 60 * 1000);
+
+// Converts raw WE/AUX ADC counts to ppb using GAS_CALIBRATION — returns
+// null (not 0) if any constant is still unset, so "uncalibrated" and
+// "calibrated but reading zero" never get confused.
+function rawToPpb(weRaw, auxRaw, cal) {
+  if (cal.weZero === null || cal.auxZero === null || cal.weAuxRatio === null || cal.sensitivity === null) return null;
+  if (typeof weRaw !== "number" || typeof auxRaw !== "number") return null;
+  const compensatedWe = (weRaw - cal.weZero) - cal.weAuxRatio * (auxRaw - cal.auxZero);
+  return compensatedWe / cal.sensitivity;
+}
+
+// ---- US EPA Air Quality Index ----
+// Real EPA breakpoint tables (2024 revision) and the standard linear
+// interpolation formula — see https://www.airnow.gov/aqi/aqi-calculator/
+// AQI = ((AQIhi - AQIlo) / (Chi - Clo)) * (C - Clo) + AQIlo
+const AQI_BREAKPOINTS = {
+  pm25: [ // µg/m³, 24-hr average
+    [0.0, 9.0, 0, 50],
+    [9.1, 35.4, 51, 100],
+    [35.5, 55.4, 101, 150],
+    [55.5, 125.4, 151, 200],
+    [125.5, 225.4, 201, 300],
+    [225.5, 325.4, 301, 500]
+  ],
+  pm10: [ // µg/m³, 24-hr average
+    [0, 54, 0, 50],
+    [55, 154, 51, 100],
+    [155, 254, 101, 150],
+    [255, 354, 151, 200],
+    [355, 424, 201, 300],
+    [425, 604, 301, 500]
+  ],
+  no2: [ // ppb, 1-hr average
+    [0, 53, 0, 50],
+    [54, 100, 51, 100],
+    [101, 360, 101, 150],
+    [361, 649, 151, 200],
+    [650, 1249, 201, 300],
+    [1250, 1649, 301, 400],
+    [1650, 2049, 401, 500]
+  ],
+  o3: [ // ppb, 8-hr average (EPA also defines 1-hr breakpoints above AQI 300, not included here)
+    [0, 54, 0, 50],
+    [55, 70, 51, 100],
+    [71, 85, 101, 150],
+    [86, 105, 151, 200],
+    [106, 200, 201, 300]
+  ]
+};
+
+function aqiFromConcentration(conc, table) {
+  if (conc === null || conc === undefined || isNaN(conc)) return null;
+  for (const [cLo, cHi, aLo, aHi] of table) {
+    if (conc >= cLo && conc <= cHi) {
+      return Math.round(((aHi - aLo) / (cHi - cLo)) * (conc - cLo) + aLo);
+    }
+  }
+  const last = table[table.length - 1];
+  return conc > last[1] ? 500 : null;
+}
+
+// EPA methodology: overall AQI is the MAX of each pollutant's sub-index.
+// Any pollutant whose concentration is null (no data, or NO2/O3 still
+// uncalibrated per GAS_CALIBRATION) is simply left out of the max.
+function overallAqi({ pm25Avg, pm10Avg, no2Ppb, o3Ppb }) {
+  const subs = [
+    aqiFromConcentration(pm25Avg, AQI_BREAKPOINTS.pm25),
+    aqiFromConcentration(pm10Avg, AQI_BREAKPOINTS.pm10),
+    aqiFromConcentration(no2Ppb, AQI_BREAKPOINTS.no2),
+    aqiFromConcentration(o3Ppb, AQI_BREAKPOINTS.o3)
+  ].filter(v => v !== null);
+  if (!subs.length) return null;
+  return Math.max(...subs);
+}
+
+// Official EPA AQI category names/colors.
+function aqiCategory(aqi) {
+  if (aqi === null) return { label: "No Data", color: "var(--muted)" };
+  if (aqi <= 50) return { label: "Good", color: "#00e400" };
+  if (aqi <= 100) return { label: "Moderate", color: "#ffff00" };
+  if (aqi <= 150) return { label: "Unhealthy for Sensitive Groups", color: "#ff7e00" };
+  if (aqi <= 200) return { label: "Unhealthy", color: "#ff0000" };
+  if (aqi <= 300) return { label: "Very Unhealthy", color: "#8f3f97" };
+  return { label: "Hazardous", color: "#7e0023" };
+}
+
+const PANELS = ["aqi", "power"];
+function showPanel(name) {
+  PANELS.forEach(p => {
+    document.getElementById("panel_" + p).style.display = p === name ? "block" : "none";
+  });
+  document.querySelectorAll(".tab-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.panel === name));
+  // Charts created while their panel was display:none report zero size —
+  // force a resize now that the panel is actually visible so they render
+  // at the right dimensions instead of staying collapsed.
+  requestAnimationFrame(() => Object.values(charts).forEach(c => c.resize()));
+}
+
+function buildLayout() {
+  content.innerHTML = `
+    <div class="station-info" id="stationInfo"></div>
+    <div class="toolbar-row">
+      <div class="tab-switch">
+        <button class="tab-btn active" data-panel="aqi" onclick="showPanel('aqi')">Air Quality &amp; Environment</button>
+        <button class="tab-btn" data-panel="power" onclick="showPanel('power')">Power &amp; Connectivity</button>
+      </div>
+      <div class="range-select" id="dateRangeTabs">
+        <span class="range-label">Chart Range</span>
+        ${DATE_RANGE_OPTIONS_DAYS.map(d =>
+          `<button class="tab-btn${!customRange && d === chartWindowDays ? " active" : ""}" data-range="${d}" onclick="selectDateRange(${d})">${d}D</button>`
+        ).join("")}
+        <button class="tab-btn${customRange ? " active" : ""}" data-range="custom" onclick="selectCustomRange()">Custom</button>
+        <input type="date" id="rangeFrom" class="range-date" onchange="applyCustomRange()" style="display:${customRange ? "inline-block" : "none"};">
+        <span class="range-date-sep" id="rangeSep" style="display:${customRange ? "inline" : "none"};">to</span>
+        <input type="date" id="rangeTo" class="range-date" onchange="applyCustomRange()" style="display:${customRange ? "inline-block" : "none"};">
+      </div>
+    </div>
+    <div id="panel_aqi">
+      <div class="dashboard-top">
+        <div>
+          <div class="aqi-circle" id="aqiCircle"></div>
+          <div class="aqi-note">AQI from PM2.5/PM10 (EPA breakpoints). NO2/O3 shown as raw electrode readings — not yet calibrated to ppb, so excluded from AQI.</div>
+        </div>
+        <div class="stat-columns">
+          <div class="stat-row" id="statRowAqi"></div>
+          <div class="stat-row" id="statRowEnvironment"></div>
+        </div>
+      </div>
+      <div class="charts">
+        <div class="chart-box"><h3>PM2.5 (µg/m³)</h3><canvas id="chartPM25"></canvas></div>
+        <div class="chart-box"><h3>PM1 (µg/m³)</h3><canvas id="chartPM1"></canvas></div>
+        <div class="chart-box"><h3>PM10 (µg/m³)</h3><canvas id="chartPM10"></canvas></div>
+        <div class="chart-box"><h3>NO2 (raw ADC)</h3><canvas id="chartNO2"></canvas></div>
+        <div class="chart-box"><h3>O3 (raw ADC)</h3><canvas id="chartO3"></canvas></div>
+        <div class="chart-box"><h3>Temperature (°C)</h3><canvas id="chartTemp"></canvas></div>
+        <div class="chart-box"><h3>Humidity (%)</h3><canvas id="chartHum"></canvas></div>
+      </div>
+    </div>
+    <div id="panel_power" style="display:none;">
+      <h3 class="panel-subhead">Power</h3>
+      <div class="stat-row" id="statRowPower"></div>
+      <h3 class="panel-subhead">Network</h3>
+      <div class="panel-subnote">Network and signal information reflects the device status reported in the latest received payload and does not represent a continuous live connection.</div>
+      <div class="stat-row" id="statRowNetwork"></div>
+      <h3 class="panel-subhead">Data Transmission</h3>
+      <div class="stat-row" id="statRowTransmission"></div>
+      <div class="charts">
+        <div class="chart-box"><h3>Battery Voltage (V)</h3><canvas id="chartBatt"></canvas></div>
+        <div class="chart-box"><h3>Signal Quality (CSQ RSSI, 0-31, 99=no signal)</h3><canvas id="chartCSQ"></canvas></div>
+      </div>
+    </div>
+  `;
+}
+
+// x is a numeric linear scale (unix ms), not Chart.js's date/time scale,
+// so no date-adapter dependency is needed — min/max are pinned to
+// getChartRangeMs() (preset days or a custom picked range) and tick
+// labels are formatted manually, switching to a date+time format once
+// the window spans more than a day.
+function makeLineChart(canvasId, label, color) {
+  const ctx = document.getElementById(canvasId).getContext("2d");
+  const range = getChartRangeMs();
+  return new Chart(ctx, {
+    type: "line",
+    data: { datasets: [{ label, data: [], borderColor: color, backgroundColor: color + "33", tension: 0.25, pointRadius: 2 }] },
+    options: {
+      responsive: true,
+      animation: false,
+      parsing: false,
+      scales: {
+        x: {
+          type: "linear",
+          min: range.min,
+          max: range.max,
+          ticks: {
+            color: "#8b98a5", maxRotation: 0, autoSkip: true, maxTicksLimit: 6,
+            callback: v => {
+              const r = getChartRangeMs();
+              const spanDays = (r.max - r.min) / (24 * 60 * 60 * 1000);
+              const d = new Date(v);
+              return spanDays > 1
+                ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+                : d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+            }
+          },
+          grid: { color: "#263140" }
+        },
+        y: { ticks: { color: "#8b98a5" }, grid: { color: "#263140" } }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+function updateChart(chart, chartRows, field) {
+  chart.data.datasets[0].data = chartRows
+    .filter(r => r.timestamp && typeof r[field] === "number")
+    .map(r => ({ x: r.timestamp * 1000, y: r[field] }));
+  const range = getChartRangeMs();
+  chart.options.scales.x.min = range.min;
+  chart.options.scales.x.max = range.max;
+  chart.update();
+}
+
+function renderCharts(rows) {
+  const range = getChartRangeMs();
+  const chartRows = rows.filter(r => r.timestamp && r.timestamp * 1000 >= range.min && r.timestamp * 1000 <= range.max);
+
+  if (!charts.batt) {
+    charts.batt = makeLineChart("chartBatt", "Battery V", "#57d38c");
+    charts.csq = makeLineChart("chartCSQ", "CSQ RSSI", "#4fd1c5");
+    charts.pm25 = makeLineChart("chartPM25", "PM2.5", "#4fd1c5");
+    charts.pm1 = makeLineChart("chartPM1", "PM1", "#57d38c");
+    charts.pm10 = makeLineChart("chartPM10", "PM10", "#f0b429");
+    charts.no2 = makeLineChart("chartNO2", "NO2", "#f0b429");
+    charts.o3 = makeLineChart("chartO3", "O3", "#f16565");
+    charts.temp = makeLineChart("chartTemp", "Temp °C", "#f0b429");
+    charts.hum = makeLineChart("chartHum", "Humidity %", "#4fd1c5");
+  }
+
+  updateChart(charts.batt, chartRows, "batt_v");
+  updateChart(charts.csq, chartRows, "csq_rssi");
+  updateChart(charts.pm25, chartRows, "pm25");
+  updateChart(charts.pm1, chartRows, "pm1");
+  updateChart(charts.pm10, chartRows, "pm10");
+  updateChart(charts.no2, chartRows, "no2_we");
+  updateChart(charts.o3, chartRows, "ox_we");
+  updateChart(charts.temp, chartRows, "temp");
+  updateChart(charts.hum, chartRows, "hum");
+}
+
+async function loadData() {
+  try {
+    const res = await fetch(DEVICES[currentDevice], { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const json = await res.json();
+
+    if (!json) {
+      content.innerHTML = `<div class="empty">No records in Firebase yet.<br>This usually means the device hasn't successfully posted (check cellular/antenna connection).</div>`;
+      charts = {};
+      return;
+    }
+
+    const keys = Object.keys(json).sort();
+    const rows = keys.map(k => ({ key: k, ...json[k] }));
+    const latest = rows[rows.length - 1];
+    const latestTime = fmtTime(latest.timestamp);
+
+    if (!content.querySelector("#aqiCircle")) buildLayout();
+
+    // ---- Station identity ----
+    const loc = DEVICE_LOCATIONS[currentDevice] || {};
+
+    const cs = connectionState(latest.timestamp);
+    const dotClass = cs.state, connLabel = cs.label;
+
+    document.getElementById("stationInfo").innerHTML = `
+      <div class="station-name">${currentDevice}</div>
+      <div class="station-detail"><span class="label">Location</span><span class="value">${loc.location || "—"}</span></div>
+      <div class="station-detail"><span class="label">Floor</span><span class="value">${loc.floor || "—"}${loc.heightM ? ` (~${loc.heightM}m)` : ""}</span></div>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:24px;">
+        <div class="status-indicator">
+          <span class="dot ${dotClass}" title="${connLabel}"></span>
+          ${statusBadge(dotClass)}
+        </div>
+        ${batteryGaugeHtml(latest.batt_v, latest.batt_soc, { width: 38, height: 18, fontSize: 10, voltFontSize: 13 })}
+        <div class="station-detail"><span class="label">Last Connection</span><span class="value">${latestTime || "—"}</span></div>
+      </div>
+    `;
+
+    // ---- AQI ----
+    // PM2.5/PM10 use 24-hr averages per EPA methodology. NO2 uses a 1-hr
+    // average (EPA's primary NO2 averaging period); O3 uses an 8-hr average
+    // of the OX (oxidant) electrode with the NO2 contribution subtracted
+    // out (OX responds to NO2 as well as O3 — see GAS_CALIBRATION notes),
+    // corrected against a 1-hr NO2 ppb for simplicity.
+    const avgPm25 = dailyAvg(rows, "pm25");
+    const avgPm10 = dailyAvg(rows, "pm10");
+    const avgPm1 = dailyAvg(rows, "pm1");
+    const avgNo2Hr = hourlyAvg(rows, "no2_we");
+    const avgO3Hr = hourlyAvg(rows, "ox_we");
+
+    const no2Ppb = rawToPpb(hourlyAvg(rows, "no2_we"), hourlyAvg(rows, "no2_aux"), GAS_CALIBRATION.no2);
+    const oxPpb = rawToPpb(avg8h(rows, "ox_we"), avg8h(rows, "ox_aux"), GAS_CALIBRATION.ox);
+    const o3Ppb = (oxPpb !== null && no2Ppb !== null) ? Math.max(0, oxPpb - no2Ppb) : null;
+
+    const aqi = overallAqi({ pm25Avg: avgPm25, pm10Avg: avgPm10, no2Ppb, o3Ppb });
+    const cat = aqiCategory(aqi);
+    const gasCalibrated = GAS_CALIBRATION.no2.sensitivity !== null && GAS_CALIBRATION.ox.sensitivity !== null;
+
+    document.getElementById("aqiCircle").innerHTML = `
+      <div class="aqi-value" style="color:${cat.color}">${aqi === null ? "—" : aqi}</div>
+      <div class="aqi-index-label">AQI</div>
+      <div class="aqi-category" style="color:${cat.color}">${cat.label}</div>
+    `;
+    document.getElementById("aqiCircle").style.borderColor = cat.color;
+    const aqiNoteEl = document.querySelector(".aqi-note");
+    if (aqiNoteEl) {
+      aqiNoteEl.textContent = gasCalibrated
+        ? "AQI from PM2.5, PM10, NO2, O3 (EPA breakpoints)."
+        : "AQI from PM2.5/PM10 only (EPA breakpoints). NO2/O3 raw electrode readings aren't calibrated to ppb yet — set GAS_CALIBRATION to include them.";
+    }
+
+    // ---- "Air Quality" panel: pollutants (alongside the AQI circle) ----
+    document.getElementById("statRowAqi").innerHTML = `
+      <div class="card"><div class="label">PM2.5</div><div class="value">${fmt(latest.pm25, 0)}<span class="unit">µg/m³</span></div><div class="sub">24h avg: ${avgPm25 === null ? "—" : avgPm25.toFixed(0)}</div></div>
+      <div class="card"><div class="label">PM1</div><div class="value">${fmt(latest.pm1, 0)}<span class="unit">µg/m³</span></div><div class="sub">24h avg: ${avgPm1 === null ? "—" : avgPm1.toFixed(0)}</div></div>
+      <div class="card"><div class="label">PM10</div><div class="value">${fmt(latest.pm10, 0)}<span class="unit">µg/m³</span></div><div class="sub">24h avg: ${avgPm10 === null ? "—" : avgPm10.toFixed(0)}</div></div>
+      <div class="card"><div class="label">NO2 (raw)</div><div class="value">${fmt(latest.no2_we, 0)}</div><div class="sub">1h avg: ${avgNo2Hr === null ? "—" : avgNo2Hr.toFixed(0)}</div></div>
+      <div class="card"><div class="label">O3 (raw)</div><div class="value">${fmt(latest.ox_we, 0)}</div><div class="sub">1h avg: ${avgO3Hr === null ? "—" : avgO3Hr.toFixed(0)}</div></div>
+    `;
+
+    // ---- "Environment" panel ----
+    document.getElementById("statRowEnvironment").innerHTML = `
+      <div class="card"><div class="label">Temperature</div><div class="value">${fmt(latest.temp, 1)}<span class="unit">°C</span></div></div>
+      <div class="card"><div class="label">Humidity</div><div class="value">${fmt(latest.hum, 0)}<span class="unit">%</span></div></div>
+    `;
+
+    // ---- "Power" panel ----
+    document.getElementById("statRowPower").innerHTML = `
+      <div class="card"><div class="label">Battery %</div><div class="value">${fmt(latest.batt_soc, 0)}<span class="unit">%</span></div></div>
+      <div class="card"><div class="label">Battery Voltage</div><div class="value">${fmt(latest.batt_v, 2)}<span class="unit">V</span></div></div>
+    `;
+
+    // ---- "Connectivity" panel: Network + Data Transmission ----
+    // Cellular Signal always shows the latest reported CSQ, independent of
+    // Station Status — a station can go offline/delayed while its last
+    // reported signal was fine (or bad), and that combination is itself a
+    // useful diagnostic, so this never disappears when the station isn't
+    // "online" — it just relabels itself "Reported X ago" instead of
+    // "Latest transmission".
+    const csq = csqInfo(latest.csq_rssi);
+    const signalAge = dotClass === "online" ? "Latest transmission" : (latest.timestamp ? "Reported " + timeAgo(latest.timestamp) : "—");
+    document.getElementById("statRowNetwork").innerHTML = `
+      <div class="card">
+        <div class="label">Cellular Signal</div>
+        <div class="value value-with-icon">${csq.label} ${signalIconHtml(latest.csq_rssi, 36)}</div>
+        <div class="sub">${csq.dbm !== null ? csq.dbm + " dBm · CSQ " + fmt(latest.csq_rssi, 0) : "CSQ " + fmt(latest.csq_rssi, 0)}</div>
+        <div class="sub">${signalAge}</div>
+      </div>
+      <div class="card"><div class="label">Network Registration</div><div class="value">${ceregLabel(latest.cereg_stat)}</div></div>
+      <div class="card"><div class="label">Data Network</div><div class="value">${cgattLabel(latest.cgatt)}</div></div>
+    `;
+    const recent = rows.slice(-ROLLING_WINDOW);
+    const successCount = recent.filter(r => r.last_post_ok == 1).length;
+    document.getElementById("statRowTransmission").innerHTML = `
+      <div class="card"><div class="label">Last Upload</div><div class="value">${timeAgo(latest.timestamp) || "—"}</div></div>
+      <div class="card"><div class="label">Upload Status</div><div class="value">${latest.last_post_ok == 1 ? "Successful" : "Failed"}</div></div>
+      <div class="card"><div class="label">HTTP Status</div><div class="value">${fmt(latest.last_http_status, 0)}</div></div>
+      <div class="card"><div class="label">Pending Records</div><div class="value">${fmt(latest.pending_queue, 0)}</div></div>
+      <div class="card"><div class="label">Comm Success</div><div class="value">${recent.length ? Math.round(successCount / recent.length * 100) : "—"}<span class="unit">%</span></div><div class="sub">${recent.length ? successCount + "/" + recent.length + " sends" : "no data"}</div></div>
+    `;
+
+   // ---- Charts ----
+    lastRows = rows;
+    renderCharts(rows);
+
+  } catch (err) {
+    content.innerHTML = `<div class="empty">Fetch failed: ${err.message}</div>`;
+  }
+}
+
+function switchDevice(name) {
+  currentDevice = name;
+  charts = {};                          // old canvases are gone with buildLayout()'s next call
+  lastRows = [];                        // avoid a stale-device flash if a range tab is clicked before the first fetch lands
+  content.innerHTML = `<div class="empty">Loading…</div>`;
+  if (refreshTimer) clearInterval(refreshTimer);
+  loadData();
+  refreshTimer = setInterval(loadData, REFRESH_MS);
+}
+
+document.getElementById("refreshBtn").addEventListener("click", loadData);
+
+// Lets the sidebar's "Station Details →" link on index.html jump
+// straight to a specific station instead of always opening the default.
+const requestedDevice = new URLSearchParams(window.location.search).get("device");
+switchDevice(DEVICES[requestedDevice] ? requestedDevice : DEFAULT_DEVICE);
+</script>
+
+</body>
+</html>
