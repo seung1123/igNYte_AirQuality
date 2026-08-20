@@ -42,7 +42,7 @@
   .page-tab.active { color: var(--accent); background: var(--panel2); border-color: var(--border); }
   .page-subnote {
     font-size: 11px; color: var(--muted); line-height: 1.4;
-    padding: 8px 24px; border-bottom: 1px solid var(--border);
+    margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
   }
   .metric-tabs {
     display: flex; gap: 4px; padding: 10px 24px; border-bottom: 1px solid var(--border);
@@ -164,8 +164,6 @@
   </div>
 </div>
 
-<div class="page-subnote">Cellular signal (icon and value) reflects the reading from each device's most recent payload, not a live measurement — it's only current while the station is Online, and may be stale once a station is Delayed, has a Connection Issue, or is Offline.</div>
-
 <div class="metric-tabs" id="metricTabs"></div>
 
 <div class="main">
@@ -183,8 +181,9 @@
       <div class="legend-row"><span class="legend-swatch" style="background:#8b98a5"></span>Unavailable</div>
     </div>
   </div>
-  <div class="sidebar" id="sidebar">
-    <div class="empty-msg">Loading devices…</div>
+  <div class="sidebar">
+    <div class="page-subnote">Network and signal information reflects the device status reported in the latest received payload and does not represent a continuous live connection.</div>
+    <div id="deviceList"><div class="empty-msg">Loading devices…</div></div>
   </div>
 </div>
 
@@ -234,7 +233,7 @@ const GAS_CALIBRATION = {
 };
 // =============================
 
-const sidebar = document.getElementById("sidebar");
+const sidebar = document.getElementById("deviceList");
 let map = null;
 let layer3d = null;
 let badgeEls = {};
