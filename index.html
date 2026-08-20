@@ -94,8 +94,6 @@
     display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;
   }
   .device-card .name { font-weight: 600; font-size: 14px; }
-  .device-card .name-row { display: flex; align-items: center; gap: 8px; }
-  .device-card .name-row .batt-gauge-wrap { margin-top: 0; }
   .device-card .loc { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
   .device-card .loc .floor { display: block; }
   .station-link {
@@ -137,10 +135,7 @@
   }
   .pollutant .p-value { font-size: 19px; font-weight: 700; color: var(--text); line-height: 1.2; }
   .pollutant .p-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin-top: 2px; }
-  .daily-avg-row {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin-top: 8px;
-    font-size: 11px; color: var(--muted);
-  }
+  .pollutant .p-avg { font-size: 9px; color: var(--muted); margin-top: 3px; }
   .comm-line {
     font-size: 11px; color: var(--muted); margin-top: 10px; padding-top: 10px;
     border-top: 1px solid var(--border); line-height: 1.6;
@@ -687,19 +682,19 @@ function renderSidebar(results) {
     const csq = csqInfo(latest?.csq_rssi);
 
     const soc = latest?.batt_soc;
+    const avgPm1 = dailyAvg(rows, "pm1");
     const avgPm25 = dailyAvg(rows, "pm25");
     const avgPm10 = dailyAvg(rows, "pm10");
-    const avgNo2 = dailyAvg(rows, "no2_we");
-    const avgO3 = dailyAvg(rows, "ox_we");
+    const avgNo2 = hourlyAvg(rows, "no2_we");
+    const avgO3 = hourlyAvg(rows, "ox_we");
+    const fmtAvgLine = (avg, windowLabel) => `<div class="p-avg">${windowLabel} avg ${avg === null ? "—" : avg.toFixed(0)}</div>`;
 
     return `
       <div class="device-card${activeDevice === id ? " active" : ""}" data-device="${id}" onclick="focusDevice('${id}')">
         <div class="head">
           <div>
-            <div class="name-row">
-              <span class="name">${id}</span>
-              ${batteryGaugeHtml(latest?.batt_v, soc, { width: 32, height: 15, fontSize: 9, voltFontSize: 11 })}
-            </div>
+            <div class="name">${id}</div>
+            ${batteryGaugeHtml(latest?.batt_v, soc, { width: 34, height: 16, fontSize: 10, voltFontSize: 12 })}
             <div class="loc">${loc.location || "—"}<span class="floor">${loc.floor || ""}${loc.heightM ? ` (~${loc.heightM}m)` : ""}</span></div>
           </div>
           <div class="status-indicator">
@@ -708,21 +703,17 @@ function renderSidebar(results) {
           </div>
         </div>
         <div class="pollutant-row">
-          <div class="pollutant"><div class="p-value">${fmt(latest?.pm25, 0)}</div><div class="p-label">PM2.5</div></div>
-          <div class="pollutant"><div class="p-value">${fmt(latest?.pm1, 0)}</div><div class="p-label">PM1</div></div>
-          <div class="pollutant"><div class="p-value">${fmt(latest?.pm10, 0)}</div><div class="p-label">PM10</div></div>
-          <div class="pollutant"><div class="p-value">${fmt(latest?.no2_we, 0)}</div><div class="p-label">NO2</div></div>
-          <div class="pollutant"><div class="p-value">${fmt(latest?.ox_we, 0)}</div><div class="p-label">O3</div></div>
+          <div class="pollutant"><div class="p-value">${fmt(latest?.pm1, 0)}</div><div class="p-label">PM1</div>${fmtAvgLine(avgPm1, "24h")}</div>
+          <div class="pollutant"><div class="p-value">${fmt(latest?.pm25, 0)}</div><div class="p-label">PM2.5</div>${fmtAvgLine(avgPm25, "24h")}</div>
+          <div class="pollutant"><div class="p-value">${fmt(latest?.pm10, 0)}</div><div class="p-label">PM10</div>${fmtAvgLine(avgPm10, "24h")}</div>
+        </div>
+        <div class="pollutant-row">
+          <div class="pollutant"><div class="p-value">${fmt(latest?.no2_we, 0)}</div><div class="p-label">NO2</div>${fmtAvgLine(avgNo2, "1h")}</div>
+          <div class="pollutant"><div class="p-value">${fmt(latest?.ox_we, 0)}</div><div class="p-label">O3</div>${fmtAvgLine(avgO3, "1h")}</div>
         </div>
         <div class="environment-row">
           <div class="pollutant"><div class="p-value">${fmt(latest?.temp, 1)}</div><div class="p-label">Temp °C</div></div>
           <div class="pollutant"><div class="p-value">${fmt(latest?.hum, 0)}</div><div class="p-label">Humidity %</div></div>
-        </div>
-        <div class="daily-avg-row">
-          <span>PM2.5 24h avg: ${avgPm25 === null ? "—" : avgPm25.toFixed(0)}</span>
-          <span>PM10 24h avg: ${avgPm10 === null ? "—" : avgPm10.toFixed(0)}</span>
-          <span>NO2 24h avg: ${avgNo2 === null ? "—" : avgNo2.toFixed(0)}</span>
-          <span>O3 24h avg: ${avgO3 === null ? "—" : avgO3.toFixed(0)}</span>
         </div>
         <div class="comm-line">
           Last send: <span class="${lastOk === true ? "ok-text" : lastOk === false ? "bad-text" : ""}">${lastOk === null ? "—" : (lastOk ? "OK" : "Failed")}${latest?.last_http_status ? " (" + latest.last_http_status + ")" : ""}</span><br>
