@@ -129,6 +129,10 @@
   .card .batt-gauge-wrap { margin-top: 6px; }
   .card .value-with-icon { display: flex; align-items: center; gap: 6px; }
   .signal-icon { display: block; }
+  .signal-icon-wrap { display: flex; align-items: center; flex-shrink: 0; }
+  .page-subnote {
+    font-size: 11px; color: var(--muted); line-height: 1.4; margin: -12px 0 16px 0;
+  }
   .charts {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
     gap: 16px; margin-bottom: 24px;
@@ -157,6 +161,8 @@
     <button id="refreshBtn">Refresh now</button>
   </div>
 </div>
+
+<div class="page-subnote">Cellular signal (icon and value) reflects the reading from this device's most recent payload, not a live measurement — it's only current while the station is Online, and may be stale once it's Delayed, has a Connection Issue, or is Offline.</div>
 
 <div id="content">
   <div class="empty">Loading…</div>
@@ -685,19 +691,19 @@ async function loadData() {
 
     const cs = connectionState(latest.timestamp);
     const dotClass = cs.state, connLabel = cs.label;
+    const csq = csqInfo(latest.csq_rssi);
 
     document.getElementById("stationInfo").innerHTML = `
+      <div class="status-indicator">
+        <span class="dot ${dotClass}" title="${connLabel}"></span>
+        ${statusBadge(dotClass)}
+      </div>
+      <span class="signal-icon-wrap" title="${csq.label}${csq.dbm !== null ? ` · ${csq.dbm} dBm` : ""}">${signalIconHtml(latest.csq_rssi, 20)}</span>
+      ${batteryGaugeHtml(latest.batt_v, latest.batt_soc, { width: 38, height: 18, fontSize: 10, voltFontSize: 13 })}
+      <div class="station-detail"><span class="label">Last Connection</span><span class="value">${latestTime || "—"}</span></div>
       <div class="station-name">${currentDevice}</div>
       <div class="station-detail"><span class="label">Location</span><span class="value">${loc.location || "—"}</span></div>
       <div class="station-detail"><span class="label">Floor</span><span class="value">${loc.floor || "—"}${loc.heightM ? ` (~${loc.heightM}m)` : ""}</span></div>
-      <div style="margin-left:auto; display:flex; align-items:center; gap:24px;">
-        <div class="status-indicator">
-          <span class="dot ${dotClass}" title="${connLabel}"></span>
-          ${statusBadge(dotClass)}
-        </div>
-        ${batteryGaugeHtml(latest.batt_v, latest.batt_soc, { width: 38, height: 18, fontSize: 10, voltFontSize: 13 })}
-        <div class="station-detail"><span class="label">Last Connection</span><span class="value">${latestTime || "—"}</span></div>
-      </div>
     `;
 
     // ---- AQI ----
@@ -761,7 +767,6 @@ async function loadData() {
     // useful diagnostic, so this never disappears when the station isn't
     // "online" — it just relabels itself "Reported X ago" instead of
     // "Latest transmission".
-    const csq = csqInfo(latest.csq_rssi);
     const signalAge = dotClass === "online" ? "Latest transmission" : (latest.timestamp ? "Reported " + timeAgo(latest.timestamp) : "—");
     document.getElementById("statRowNetwork").innerHTML = `
       <div class="card">
