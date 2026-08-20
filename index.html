@@ -112,6 +112,9 @@
   .issue-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--bad); }
   .offline-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--muted); }
   .batt-gauge-wrap { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .signal-batt-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .signal-batt-row .batt-gauge-wrap { margin-top: 0; }
+  .signal-icon-wrap { display: flex; align-items: center; flex-shrink: 0; }
   .battery-icon {
     position: relative; border: 2px solid var(--muted); border-radius: 3px;
     box-sizing: border-box; padding: 2px; flex-shrink: 0;
@@ -694,7 +697,10 @@ function renderSidebar(results) {
         <div class="head">
           <div>
             <div class="name">${id}</div>
-            ${batteryGaugeHtml(latest?.batt_v, soc, { width: 34, height: 16, fontSize: 10, voltFontSize: 12 })}
+            <div class="signal-batt-row">
+              <span class="signal-icon-wrap" title="${csq.label}${csq.dbm !== null ? ` · ${csq.dbm} dBm` : ""}">${signalIconHtml(latest?.csq_rssi, 18)}</span>
+              ${batteryGaugeHtml(latest?.batt_v, soc, { width: 34, height: 16, fontSize: 10, voltFontSize: 12 })}
+            </div>
             <div class="loc">${loc.location || "—"}<span class="floor">${loc.floor || ""}${loc.heightM ? ` (~${loc.heightM}m)` : ""}</span></div>
           </div>
           <div class="status-indicator">
