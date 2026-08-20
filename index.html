@@ -40,6 +40,10 @@
   }
   .page-tab:hover { color: var(--text); border-color: var(--border); }
   .page-tab.active { color: var(--accent); background: var(--panel2); border-color: var(--border); }
+  .page-subnote {
+    font-size: 11px; color: var(--muted); line-height: 1.4;
+    padding: 8px 24px; border-bottom: 1px solid var(--border);
+  }
   .metric-tabs {
     display: flex; gap: 4px; padding: 10px 24px; border-bottom: 1px solid var(--border);
     flex-wrap: wrap;
@@ -159,6 +163,8 @@
     </nav>
   </div>
 </div>
+
+<div class="page-subnote">Cellular signal (icon and value) reflects the reading from each device's most recent payload, not a live measurement — it's only current while the station is Online, and may be stale once a station is Delayed, has a Connection Issue, or is Offline.</div>
 
 <div class="metric-tabs" id="metricTabs"></div>
 
