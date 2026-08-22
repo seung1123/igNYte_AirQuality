@@ -22,9 +22,8 @@
     --good: #57d38c;
   }
   * { box-sizing: border-box; }
-  html { background: var(--bg); }
+  html, body { height: 100%; margin: 0; }
   body {
-    margin: 0; min-height: 100%;
     background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     display: flex; flex-direction: column;
@@ -43,7 +42,7 @@
   .page-tab:hover { color: var(--text); border-color: var(--border); }
   .page-tab.active { color: var(--accent); background: var(--panel2); border-color: var(--border); }
 
-  .explorer-main { display: flex; min-height: 420px; max-height: 72vh; }
+  .explorer-main { display: flex; flex: 1; min-height: 420px; }
   .map-wrap { position: relative; flex: 1; }
   #map { position: absolute; inset: 0; background: var(--panel); }
   #marker-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
