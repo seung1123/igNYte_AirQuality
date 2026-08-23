@@ -746,6 +746,11 @@ class Device3DLayer {
 
   setHeightBarsVisible(visible) {
     Object.values(this.rulerSegments).forEach(segments => segments.forEach(seg => { seg.visible = visible; }));
+    // Toggling a Three.js mesh's visibility doesn't itself tell MapLibre the
+    // canvas needs redrawing — it only repaints on camera movement or an
+    // explicit trigger, so without this the change sits invisible until the
+    // user next pans/zooms.
+    if (this.map) this.map.triggerRepaint();
   }
 
   render(gl, args) {
