@@ -74,12 +74,6 @@
   }
   .device-badge-3d:hover, .device-badge-3d.active { border-color: var(--accent); }
   .device-badge-3d.unchecked { opacity: 0.4; }
-  .height-bar-el {
-    display: none; position: absolute; left: 50%; top: 100%;
-    width: 5px; background: #000; transform: translateX(-50%);
-    border-radius: 0 0 2px 2px;
-  }
-  .device-badge-3d.show-height-bar .height-bar-el { display: block; }
   .device-badge-3d .badge-main { display: flex; align-items: center; gap: 5px; }
   .device-badge-3d .dot { width: 8px; height: 8px; }
   .device-badge-3d .badge-sub { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
@@ -88,13 +82,6 @@
   .badge-avgline { font-size: 11px; color: var(--muted); font-weight: 500; }
   .badge-signal-icon { display: flex; align-items: center; }
   .signal-icon { display: block; }
-  .height-bar-toggle {
-    position: absolute; top: 12px; left: 12px; z-index: 10;
-    background: var(--panel2); color: var(--muted); border: 1px solid var(--border);
-    border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
-  }
-  .height-bar-toggle:hover { color: var(--text); border-color: var(--accent); }
-  .height-bar-toggle.active { color: var(--accent); border-color: var(--accent); background: var(--panel); }
   .signal-legend {
     position: absolute; top: 12px; right: 12px; z-index: 10;
     background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
@@ -246,7 +233,6 @@
   <div class="map-wrap">
     <div id="map"></div>
     <div id="marker-overlay"></div>
-    <button class="height-bar-toggle" id="heightBarToggle" onclick="toggleHeightBars()">Height Bars: Off</button>
     <div class="signal-legend" id="signalLegend">
       <div class="legend-title">Cellular Signal</div>
       <div class="legend-row"><span class="legend-swatch" style="background:#57d38c"></span>Excellent</div>
@@ -351,10 +337,6 @@ const ISSUE_MS = 20 * 60 * 1000;
 // the group away from its real floor range. Purely visual: badges/popups
 // always display the true heightM. Raise/lower to taste.
 const HEIGHT_EXAGGERATION = 2.5;
-// Screen-space scale for the "Height Bars" toggle's ruler (see
-// toggleHeightBars) — pixels per real meter of sensor height, e.g. a 20m
-// sensor draws an 80px bar at the default of 4.
-const HEIGHT_BAR_PX_PER_M = 4;
 // Electrochemical NO2/O3 sensors report raw ADC counts, not ppb — see the
 // detailed notes on this in station.html. Leave null until you have real
 // per-unit calibration constants; pollutant map badges show no EPA color
@@ -392,7 +374,6 @@ const sidebar = document.getElementById("deviceList");
 let map = null;
 let layer3d = null;
 let badgeEls = {};
-let showHeightBars = false;
 let sidebarMode = "map";
 let checkedStations = new Set(Object.keys(DEVICES));
 let rangeWindowDays = 7;
@@ -773,7 +754,6 @@ function buildMap() {
     el.innerHTML = `
       <div class="badge-main"><span class="dot offline"></span><span class="badge-text"></span><span class="badge-signal-icon"></span></div>
       <div class="badge-sub"></div>
-      <div class="height-bar-el" style="height:${Math.max(0, Math.round((loc.heightM || 0) * HEIGHT_BAR_PX_PER_M))}px;"></div>
     `;
     el.addEventListener("click", () => {
       if (sidebarMode === "download") toggleStationCheckbox(id);
@@ -824,21 +804,6 @@ function focusDevice(id) {
     const card = document.querySelector(`.device-card[data-device="${id}"]`);
     if (card) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
-}
-
-// Shows/hides a bold black bar hanging straight down from each map badge,
-// sized in proportion to that sensor's real height (see HEIGHT_BAR_PX_PER_M)
-// — a plain DOM element nested inside the badge itself, so it always tracks
-// the badge's exact screen position with no 3D projection/perspective
-// involved (a true 3D world-space bar was tried first but leans/shifts on
-// screen at this map's steep camera pitch, which looked disconnected from
-// the sensor). Off by default to keep the map uncluttered.
-function toggleHeightBars() {
-  showHeightBars = !showHeightBars;
-  const btn = document.getElementById("heightBarToggle");
-  btn.classList.toggle("active", showHeightBars);
-  btn.textContent = showHeightBars ? "Height Bars: On" : "Height Bars: Off";
-  document.querySelectorAll(".device-badge-3d").forEach(el => el.classList.toggle("show-height-bar", showHeightBars));
 }
 
 async function fetchDevice(id) {
