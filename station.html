@@ -698,16 +698,18 @@ async function loadData() {
     const csq = csqInfo(latest.csq_rssi);
 
     document.getElementById("stationInfo").innerHTML = `
-      <div class="status-indicator">
-        <span class="dot ${dotClass}" title="${connLabel}"></span>
-        ${statusBadge(dotClass)}
-      </div>
-      <span class="signal-icon-wrap" title="${csq.label}${csq.dbm !== null ? ` · ${csq.dbm} dBm` : ""}">${signalIconHtml(latest.csq_rssi, 20)}</span>
-      ${batteryGaugeHtml(latest.batt_v, latest.batt_soc, { width: 38, height: 18, fontSize: 10, voltFontSize: 13 })}
-      <div class="station-detail"><span class="label">Last Connection</span><span class="value">${latestTime || "—"}</span></div>
       <div class="station-name">${currentDevice}</div>
-      <div class="station-detail"><span class="label">Location</span><span class="value">${loc.location || "—"}</span></div>
-      <div class="station-detail"><span class="label">Floor</span><span class="value">${loc.floor || "—"}${loc.heightM ? ` (~${loc.heightM}m)` : ""}</span></div>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:24px;">
+        <div class="status-indicator">
+          <span class="dot ${dotClass}" title="${connLabel}"></span>
+          ${statusBadge(dotClass)}
+        </div>
+        <span class="signal-icon-wrap" title="${csq.label}${csq.dbm !== null ? ` · ${csq.dbm} dBm` : ""}">${signalIconHtml(latest.csq_rssi, 20)}</span>
+        ${batteryGaugeHtml(latest.batt_v, latest.batt_soc, { width: 38, height: 18, fontSize: 10, voltFontSize: 13 })}
+        <div class="station-detail"><span class="label">Last Connection</span><span class="value">${latestTime || "—"}</span></div>
+        <div class="station-detail"><span class="label">Location</span><span class="value">${loc.location || "—"}</span></div>
+        <div class="station-detail"><span class="label">Floor</span><span class="value">${loc.floor || "—"}${loc.heightM ? ` (~${loc.heightM}m)` : ""}</span></div>
+      </div>
     `;
 
     // ---- AQI ----
