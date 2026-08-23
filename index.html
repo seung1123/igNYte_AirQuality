@@ -703,34 +703,28 @@ class Device3DLayer {
         this.scene.add(stem);
       }
 
-      // Height ruler: alternating-color bands every SEGMENT_M meters from
-      // ground to the sensor, like a measuring stick — off by default
-      // (hidden via visible=false) and shown only via setHeightBarsVisible(),
-      // since it's thicker/brighter than the plain stem and would clutter
-      // the map if it were always on.
-      const SEGMENT_M = 5;
+      // Height ruler: one solid bold black bar from ground straight up to
+      // the sensor — off by default (hidden via visible=false) and shown
+      // only via setHeightBarsVisible(). A single mesh (rather than
+      // multiple stacked segments) so there's no inter-segment draw-order
+      // ambiguity with depthTest disabled below.
       const segments = [];
       if (dzM > 0.01) {
-        const segCount = Math.max(1, Math.ceil(dzM / SEGMENT_M));
-        for (let i = 0; i < segCount; i++) {
-          const segStart = i * SEGMENT_M;
-          const segH = Math.min(dzM, segStart + SEGMENT_M) - segStart;
-          const seg = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.6, 0.6, segH, 8),
-            // depthTest:false so the ruler stays readable even when a 3D
-            // building extrusion (drawn by MapLibre into the same shared
-            // depth buffer, outside this Three.js scene) would otherwise
-            // occlude it — it's a measurement overlay, not a realistically
-            // occluded object.
-            new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0xffffff : 0x4fd1c5, depthTest: false })
-          );
-          seg.renderOrder = 999;
-          seg.rotation.x = Math.PI / 2;
-          seg.position.set(dxM, -dyM, segStart + segH / 2);
-          seg.visible = showHeightBars;
-          this.scene.add(seg);
-          segments.push(seg);
-        }
+        const bar = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.7, 0.7, dzM, 8),
+          // depthTest:false so the ruler stays readable even when a 3D
+          // building extrusion (drawn by MapLibre into the same shared
+          // depth buffer, outside this Three.js scene) would otherwise
+          // occlude it — it's a measurement overlay, not a realistically
+          // occluded object.
+          new THREE.MeshBasicMaterial({ color: 0x000000, depthTest: false })
+        );
+        bar.renderOrder = 999;
+        bar.rotation.x = Math.PI / 2;
+        bar.position.set(dxM, -dyM, dzM / 2);
+        bar.visible = showHeightBars;
+        this.scene.add(bar);
+        segments.push(bar);
       }
       this.rulerSegments[id] = segments;
 
@@ -856,9 +850,9 @@ function focusDevice(id) {
   }
 }
 
-// Shows/hides a ruler-style bar (alternating bands every 5m) from the
-// ground up to each sensor's true height, so the vertical placement isn't
-// just implied by the stem/shadow but can be read off like a measuring
+// Shows/hides a bold black bar from the ground up to each sensor's true
+// height, so the vertical placement isn't just implied by the stem/shadow
+// but can be read off like a measuring
 // stick. Off by default to keep the map uncluttered.
 function toggleHeightBars() {
   showHeightBars = !showHeightBars;
