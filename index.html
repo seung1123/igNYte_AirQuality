@@ -59,7 +59,6 @@
   }
   .metric-tab:hover { color: var(--text); border-color: var(--accent); }
   .metric-tab.active { color: var(--accent); border-color: var(--accent); background: var(--panel); }
-  .metric-tab:disabled { opacity: 0.35; cursor: not-allowed; }
   .main {
     flex: 1; display: flex; min-height: 360px;
   }
@@ -913,10 +912,6 @@ function selectSidebarMode(mode) {
   document.getElementById("modeTabDownload").classList.toggle("active", mode === "download");
   document.getElementById("mapSidebarPanel").style.display = mode === "map" ? "flex" : "none";
   document.getElementById("downloadSidebarPanel").style.display = mode === "download" ? "block" : "none";
-  document.querySelectorAll(".metric-tab").forEach(btn => {
-    btn.disabled = mode === "download" && btn.dataset.metric !== "status";
-  });
-  if (mode === "download" && activeMetric !== "status") selectMetric("status");
 }
 
 // ---- Map badge content mode ----
