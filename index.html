@@ -756,7 +756,10 @@ function buildMap() {
       <div class="badge-main"><span class="dot offline"></span><span class="badge-text"></span><span class="badge-signal-icon"></span></div>
       <div class="badge-sub"></div>
     `;
-    el.addEventListener("click", () => focusDevice(id));
+    el.addEventListener("click", () => {
+      if (sidebarMode === "download") toggleStationCheckbox(id);
+      else focusDevice(id);
+    });
     overlay.appendChild(el);
     badgeEls[id] = el;
   });
@@ -1050,6 +1053,16 @@ function onStationCheckChange(id, checked) {
   if (checked) checkedStations.add(id); else checkedStations.delete(id);
   const badge = badgeEls[id];
   if (badge) badge.classList.toggle("unchecked", !checked);
+}
+
+// Clicking a badge on the map while in Data Download mode toggles that
+// station's checkbox instead of flying/focusing (see buildMap()'s click
+// handler) — keeps map and list selection in sync in both directions.
+function toggleStationCheckbox(id) {
+  const cb = document.querySelector(`.station-check[value="${id}"]`);
+  if (!cb) return;
+  cb.checked = !cb.checked;
+  onStationCheckChange(id, cb.checked);
 }
 
 function setAllStations(state) {
