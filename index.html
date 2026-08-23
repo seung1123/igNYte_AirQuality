@@ -798,6 +798,10 @@ function focusDevice(id) {
   document.querySelectorAll(".device-badge-3d").forEach(el => {
     el.classList.toggle("active", el.dataset.device === id);
   });
+  if (sidebarMode === "map") {
+    const card = document.querySelector(`.device-card[data-device="${id}"]`);
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 }
 
 async function fetchDevice(id) {
