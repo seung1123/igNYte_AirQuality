@@ -717,8 +717,14 @@ class Device3DLayer {
           const segH = Math.min(dzM, segStart + SEGMENT_M) - segStart;
           const seg = new THREE.Mesh(
             new THREE.CylinderGeometry(0.6, 0.6, segH, 8),
-            new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0xffffff : 0x4fd1c5 })
+            // depthTest:false so the ruler stays readable even when a 3D
+            // building extrusion (drawn by MapLibre into the same shared
+            // depth buffer, outside this Three.js scene) would otherwise
+            // occlude it — it's a measurement overlay, not a realistically
+            // occluded object.
+            new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0xffffff : 0x4fd1c5, depthTest: false })
           );
+          seg.renderOrder = 999;
           seg.rotation.x = Math.PI / 2;
           seg.position.set(dxM, -dyM, segStart + segH / 2);
           seg.visible = showHeightBars;
