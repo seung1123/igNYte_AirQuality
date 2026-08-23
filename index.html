@@ -82,6 +82,13 @@
   .badge-avgline { font-size: 11px; color: var(--muted); font-weight: 500; }
   .badge-signal-icon { display: flex; align-items: center; }
   .signal-icon { display: block; }
+  .height-bar-toggle {
+    position: absolute; top: 12px; left: 12px; z-index: 10;
+    background: var(--panel2); color: var(--muted); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .height-bar-toggle:hover { color: var(--text); border-color: var(--accent); }
+  .height-bar-toggle.active { color: var(--accent); border-color: var(--accent); background: var(--panel); }
   .signal-legend {
     position: absolute; top: 12px; right: 12px; z-index: 10;
     background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
@@ -233,6 +240,7 @@
   <div class="map-wrap">
     <div id="map"></div>
     <div id="marker-overlay"></div>
+    <button class="height-bar-toggle" id="heightBarToggle" onclick="toggleHeightBars()">Height Bars: Off</button>
     <div class="signal-legend" id="signalLegend">
       <div class="legend-title">Cellular Signal</div>
       <div class="legend-row"><span class="legend-swatch" style="background:#57d38c"></span>Excellent</div>
@@ -374,6 +382,7 @@ const sidebar = document.getElementById("deviceList");
 let map = null;
 let layer3d = null;
 let badgeEls = {};
+let showHeightBars = false;
 let sidebarMode = "map";
 let checkedStations = new Set(Object.keys(DEVICES));
 let rangeWindowDays = 7;
@@ -653,6 +662,7 @@ class Device3DLayer {
     this.deviceLocations = deviceLocations;
     this.onFrame = onFrame;
     this.meshes = {};
+    this.rulerSegments = {};
   }
 
   onAdd(mapInstance, gl) {
@@ -693,6 +703,31 @@ class Device3DLayer {
         this.scene.add(stem);
       }
 
+      // Height ruler: alternating-color bands every SEGMENT_M meters from
+      // ground to the sensor, like a measuring stick — off by default
+      // (hidden via visible=false) and shown only via setHeightBarsVisible(),
+      // since it's thicker/brighter than the plain stem and would clutter
+      // the map if it were always on.
+      const SEGMENT_M = 5;
+      const segments = [];
+      if (dzM > 0.01) {
+        const segCount = Math.max(1, Math.ceil(dzM / SEGMENT_M));
+        for (let i = 0; i < segCount; i++) {
+          const segStart = i * SEGMENT_M;
+          const segH = Math.min(dzM, segStart + SEGMENT_M) - segStart;
+          const seg = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.6, 0.6, segH, 8),
+            new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0xffffff : 0x4fd1c5 })
+          );
+          seg.rotation.x = Math.PI / 2;
+          seg.position.set(dxM, -dyM, segStart + segH / 2);
+          seg.visible = showHeightBars;
+          this.scene.add(seg);
+          segments.push(seg);
+        }
+      }
+      this.rulerSegments[id] = segments;
+
       this.meshes[id] = sphere;
     });
 
@@ -707,6 +742,10 @@ class Device3DLayer {
     const emissive = { online: 0x1c4a36, delayed: 0x4a3a10, issue: 0x4a1c1c, offline: 0x000000 };
     sphere.material.color.set(colors[state] ?? colors.offline);
     sphere.material.emissive.set(emissive[state] ?? emissive.offline);
+  }
+
+  setHeightBarsVisible(visible) {
+    Object.values(this.rulerSegments).forEach(segments => segments.forEach(seg => { seg.visible = visible; }));
   }
 
   render(gl, args) {
@@ -804,6 +843,18 @@ function focusDevice(id) {
     const card = document.querySelector(`.device-card[data-device="${id}"]`);
     if (card) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
+}
+
+// Shows/hides a ruler-style bar (alternating bands every 5m) from the
+// ground up to each sensor's true height, so the vertical placement isn't
+// just implied by the stem/shadow but can be read off like a measuring
+// stick. Off by default to keep the map uncluttered.
+function toggleHeightBars() {
+  showHeightBars = !showHeightBars;
+  const btn = document.getElementById("heightBarToggle");
+  btn.classList.toggle("active", showHeightBars);
+  btn.textContent = showHeightBars ? "Height Bars: On" : "Height Bars: Off";
+  if (layer3d) layer3d.setHeightBarsVisible(showHeightBars);
 }
 
 async function fetchDevice(id) {
