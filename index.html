@@ -6,6 +6,8 @@
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@latest/dist/maplibre-gl.js"></script>
 <link href="https://cdn.jsdelivr.net/npm/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root {
     --bg: #0b1015;
@@ -40,6 +42,7 @@
   }
   .page-tab:hover { color: var(--text); border-color: var(--border); }
   .page-tab.active { color: var(--accent); background: var(--panel2); border-color: var(--border); }
+  .page-nav button.page-tab { background: none; font-family: inherit; }
   .page-subnote {
     font-size: 11px; color: var(--muted); line-height: 1.4;
     margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
@@ -54,8 +57,9 @@
   }
   .metric-tab:hover { color: var(--text); border-color: var(--accent); }
   .metric-tab.active { color: var(--accent); border-color: var(--accent); background: var(--panel); }
+  .metric-tab:disabled { opacity: 0.35; cursor: not-allowed; }
   .main {
-    flex: 1; display: flex; min-height: 0;
+    flex: 1; display: flex; min-height: 360px;
   }
   .map-wrap { position: relative; flex: 1; }
   #map { position: absolute; inset: 0; background: var(--panel); }
@@ -68,6 +72,7 @@
     white-space: nowrap; transition: border-color 0.15s;
   }
   .device-badge-3d:hover, .device-badge-3d.active { border-color: var(--accent); }
+  .device-badge-3d.unchecked { opacity: 0.4; }
   .device-badge-3d .badge-main { display: flex; align-items: center; gap: 5px; }
   .device-badge-3d .dot { width: 8px; height: 8px; }
   .device-badge-3d .badge-sub { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
@@ -89,8 +94,57 @@
     border-left: 1px solid var(--border); padding: 16px;
     display: flex; flex-direction: column; min-height: 0;
   }
-  .sidebar .page-subnote { flex-shrink: 0; }
+  #mapSidebarPanel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  #mapSidebarPanel .page-subnote { flex-shrink: 0; }
   #deviceList { overflow-y: auto; flex: 1; min-height: 0; margin: 0 -16px; padding: 0 16px 16px; }
+  #downloadSidebarPanel { flex: 1; overflow-y: auto; margin: 0 -16px; padding: 0 16px; }
+  .control-section { margin-bottom: 22px; }
+  .control-section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .control-section h3 { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin: 0; }
+  .quick-links { font-size: 11px; }
+  .quick-links a { color: var(--accent); text-decoration: none; cursor: pointer; margin-left: 8px; }
+  .quick-links a:hover { text-decoration: underline; }
+  .check-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; cursor: pointer; }
+  .check-row input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+  .radio-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; cursor: pointer; }
+  .radio-row input[type="radio"] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+  .radio-row .radio-hint { color: var(--muted); font-size: 11px; }
+  .column-list { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+  .range-select { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .tab-btn {
+    background: var(--panel2); color: var(--muted); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .tab-btn:hover { color: var(--text); border-color: var(--accent); }
+  .tab-btn.active { color: var(--accent); border-color: var(--accent); background: var(--panel2); }
+  .range-date {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 5px 8px; font-size: 12px; font-family: inherit; cursor: pointer;
+  }
+  .range-date::-webkit-calendar-picker-indicator { cursor: pointer; filter: invert(0.7); }
+  .range-date-sep { font-size: 12px; color: var(--muted); }
+  select {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 13px; cursor: pointer; width: 100%;
+  }
+  .control-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 22px; }
+  .btn-primary, .btn-secondary {
+    border-radius: 8px; padding: 11px; font-size: 13px; font-weight: 700; cursor: pointer; border: 1px solid transparent;
+  }
+  .btn-primary { background: var(--accent); color: #06211d; }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-secondary { background: var(--panel2); color: var(--text); border-color: var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.5; cursor: default; }
+  .selection-note { font-size: 11px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+  .plot-area { padding: 24px; display: none; }
+  .plot-area-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .plot-area-head h2 { font-size: 15px; margin: 0; }
+  .plot-chart-box {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 16px;
+  }
+  .plot-chart-box h3 { margin: 0 0 8px 0; font-size: 13px; color: var(--muted); font-weight: 500; }
+  .plot-chart-box canvas { max-height: 260px; }
   .device-card {
     background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
     padding: 14px; margin-bottom: 14px; cursor: pointer; transition: border-color 0.15s;
@@ -170,8 +224,8 @@
   <div>
     <h1><img src="ignyte_logo.png" alt="igNYte" class="logo"> Air Quality Network</h1>
     <nav class="page-nav">
-      <a href="index.html" class="page-tab active">3D Air Quality Network Map</a>
-      <a href="explorer.html" class="page-tab">Data Explorer</a>
+      <button class="page-tab active" id="modeTabMap" onclick="selectSidebarMode('map')">Air Quality Network Map</button>
+      <button class="page-tab" id="modeTabDownload" onclick="selectSidebarMode('download')">Data Download</button>
     </nav>
   </div>
 </div>
@@ -194,9 +248,57 @@
     </div>
   </div>
   <div class="sidebar">
-    <div class="page-subnote">Network and signal information reflects the device status reported in the latest received payload and does not represent a continuous live connection.</div>
-    <div id="deviceList"><div class="empty-msg">Loading devices…</div></div>
+    <div id="mapSidebarPanel">
+      <div class="page-subnote">Network and signal information reflects the device status reported in the latest received payload and does not represent a continuous live connection.</div>
+      <div id="deviceList"><div class="empty-msg">Loading devices…</div></div>
+    </div>
+    <div id="downloadSidebarPanel" style="display:none;">
+      <div class="control-section">
+        <div class="control-section-head">
+          <h3>Stations</h3>
+          <div class="quick-links"><a onclick="setAllStations(true)">All</a><a onclick="setAllStations(false)">None</a></div>
+        </div>
+        <div id="stationChecks"></div>
+      </div>
+      <div class="control-section">
+        <h3>Date Range</h3>
+        <div class="range-select" id="dlDateRangeTabs"></div>
+      </div>
+      <div class="control-section">
+        <div class="control-section-head">
+          <h3>Columns</h3>
+          <div class="quick-links"><a onclick="setAllColumns(true)">All</a><a onclick="setAllColumns(false)">None</a></div>
+        </div>
+        <div class="column-list" id="columnChecks"></div>
+      </div>
+      <div class="control-section">
+        <h3>Plot Aggregation</h3>
+        <label class="radio-row"><input type="radio" name="aggMode" value="raw" checked> Each station, raw values</label>
+        <label class="radio-row"><input type="radio" name="aggMode" value="dailyavg"> Each station, daily average</label>
+        <label class="radio-row"><input type="radio" name="aggMode" value="avg"> Average across selected stations</label>
+        <div class="radio-hint">Only affects "View Plot" — downloads always contain raw records.</div>
+      </div>
+      <div class="control-section">
+        <h3>Download Format</h3>
+        <select id="downloadFormat">
+          <option value="csv">CSV</option>
+          <option value="xlsx">Excel (.xlsx)</option>
+        </select>
+      </div>
+      <div class="control-actions">
+        <button class="btn-primary" id="downloadBtn" onclick="downloadData()">Download</button>
+        <button class="btn-secondary" id="plotBtn" onclick="viewPlot()">View Plot</button>
+      </div>
+    </div>
   </div>
+</div>
+
+<div class="plot-area" id="plotArea">
+  <div class="plot-area-head">
+    <h2>Plot</h2>
+    <button class="btn-secondary" onclick="document.getElementById('plotArea').style.display='none';">Close</button>
+  </div>
+  <div id="plotCharts"></div>
 </div>
 
 <script>
@@ -243,12 +345,39 @@ const GAS_CALIBRATION = {
   no2: { weZero: null, auxZero: null, weAuxRatio: null, sensitivity: null },
   ox:  { weZero: null, auxZero: null, weAuxRatio: null, sensitivity: null },
 };
+// Data Download panel config — station line colors for "View Plot" and the
+// exportable column list (CSV/Excel always export raw records regardless
+// of the Plot Aggregation choice, which only affects the plotted view).
+const DATE_RANGE_OPTIONS_DAYS = [1, 3, 7, 30];
+const STATION_COLORS = ["#4fd1c5", "#57d38c", "#f0b429", "#f16565", "#8b5cf6", "#f97316"];
+const EXPORT_COLUMNS = [
+  { key: "pm1", label: "PM1 (µg/m³)", checked: true },
+  { key: "pm25", label: "PM2.5 (µg/m³)", checked: true },
+  { key: "pm10", label: "PM10 (µg/m³)", checked: true },
+  { key: "no2_we", label: "NO2 WE (raw)", checked: false },
+  { key: "no2_aux", label: "NO2 AUX (raw)", checked: false },
+  { key: "ox_we", label: "O3 WE (raw)", checked: false },
+  { key: "ox_aux", label: "O3 AUX (raw)", checked: false },
+  { key: "temp", label: "Temperature (°C)", checked: true },
+  { key: "hum", label: "Humidity (%)", checked: true },
+  { key: "batt_v", label: "Battery Voltage (V)", checked: false },
+  { key: "batt_soc", label: "Battery SOC (%)", checked: false },
+  { key: "csq_rssi", label: "Signal (CSQ)", checked: false },
+  { key: "last_http_status", label: "HTTP Status", checked: false },
+  { key: "last_post_ok", label: "Post OK", checked: false },
+  { key: "pending_queue", label: "Pending Records", checked: false },
+];
 // =============================
 
 const sidebar = document.getElementById("deviceList");
 let map = null;
 let layer3d = null;
 let badgeEls = {};
+let sidebarMode = "map";
+let checkedStations = new Set(Object.keys(DEVICES));
+let rangeWindowDays = 7;
+let customRange = null;
+let plotCharts = {};
 let activeDevice = null;
 let refreshTimer = null;
 
@@ -758,8 +887,27 @@ function updateDeviceStatus(results) {
     if (badge) {
       const dot = badge.querySelector(".dot");
       if (dot) dot.className = "dot " + state;
+      badge.classList.toggle("unchecked", !checkedStations.has(id));
     }
   });
+}
+
+// ---- Sidebar mode toggle: "map" (device status cards) vs "download" ----
+// (station/date/column picker + CSV/Excel export + View Plot). Both modes
+// share the same map — only the sidebar content and metric-tab
+// availability change. Pollutant coloring isn't relevant to picking
+// stations/columns to export, so metric tabs lock to Sensor Status while
+// in Data Download mode.
+function selectSidebarMode(mode) {
+  sidebarMode = mode;
+  document.getElementById("modeTabMap").classList.toggle("active", mode === "map");
+  document.getElementById("modeTabDownload").classList.toggle("active", mode === "download");
+  document.getElementById("mapSidebarPanel").style.display = mode === "map" ? "flex" : "none";
+  document.getElementById("downloadSidebarPanel").style.display = mode === "download" ? "block" : "none";
+  document.querySelectorAll(".metric-tab").forEach(btn => {
+    btn.disabled = mode === "download" && btn.dataset.metric !== "status";
+  });
+  if (mode === "download" && activeMetric !== "status") selectMetric("status");
 }
 
 // ---- Map badge content mode ----
@@ -873,10 +1021,289 @@ async function loadAll() {
   renderBadgeContent(results);
 }
 
+// ---- Data Download: station/date/column selection ----
+function fmtDateInput(ms) { return new Date(ms).toISOString().slice(0, 10); }
+
+function getDownloadRangeMs() {
+  if (customRange) return customRange;
+  const max = Date.now();
+  return { min: max - rangeWindowDays * 24 * 60 * 60 * 1000, max };
+}
+
+function buildStationChecks() {
+  const el = document.getElementById("stationChecks");
+  el.innerHTML = Object.keys(DEVICES).map(id => `
+    <label class="check-row">
+      <input type="checkbox" class="station-check" value="${id}" ${checkedStations.has(id) ? "checked" : ""} onchange="onStationCheckChange('${id}', this.checked)">
+      ${id} <span style="color:var(--muted); font-size:11px;">— ${DEVICE_LOCATIONS[id]?.floor || ""}</span>
+    </label>
+  `).join("");
+}
+
+function onStationCheckChange(id, checked) {
+  if (checked) checkedStations.add(id); else checkedStations.delete(id);
+  const badge = badgeEls[id];
+  if (badge) badge.classList.toggle("unchecked", !checked);
+}
+
+function setAllStations(state) {
+  document.querySelectorAll(".station-check").forEach(cb => { cb.checked = state; onStationCheckChange(cb.value, state); });
+}
+
+function buildColumnChecks() {
+  const el = document.getElementById("columnChecks");
+  el.innerHTML = EXPORT_COLUMNS.map(c => `
+    <label class="check-row">
+      <input type="checkbox" class="column-check" value="${c.key}" ${c.checked ? "checked" : ""}>
+      ${c.label}
+    </label>
+  `).join("");
+}
+
+function setAllColumns(state) {
+  document.querySelectorAll(".column-check").forEach(cb => { cb.checked = state; });
+}
+
+function buildDateRangeTabs() {
+  const el = document.getElementById("dlDateRangeTabs");
+  el.innerHTML = `
+    ${DATE_RANGE_OPTIONS_DAYS.map(d =>
+      `<button class="tab-btn${!customRange && d === rangeWindowDays ? " active" : ""}" data-range="${d}" onclick="selectDateRange(${d})">${d}D</button>`
+    ).join("")}
+    <button class="tab-btn${customRange ? " active" : ""}" data-range="custom" onclick="selectCustomRange()">Custom</button>
+    <input type="date" id="rangeFrom" class="range-date" onchange="applyCustomRange()" style="display:${customRange ? "inline-block" : "none"};">
+    <span class="range-date-sep" id="rangeSep" style="display:${customRange ? "inline" : "none"};">to</span>
+    <input type="date" id="rangeTo" class="range-date" onchange="applyCustomRange()" style="display:${customRange ? "inline-block" : "none"};">
+  `;
+}
+
+function selectDateRange(days) {
+  rangeWindowDays = days;
+  customRange = null;
+  document.querySelectorAll("#dlDateRangeTabs .tab-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.range == days));
+  ["rangeFrom", "rangeSep", "rangeTo"].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = "none"; });
+}
+
+function selectCustomRange() {
+  document.querySelectorAll("#dlDateRangeTabs .tab-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.range === "custom"));
+  const fromEl = document.getElementById("rangeFrom"), toEl = document.getElementById("rangeTo"), sepEl = document.getElementById("rangeSep");
+  fromEl.style.display = "inline-block"; toEl.style.display = "inline-block"; sepEl.style.display = "inline";
+  if (!fromEl.value || !toEl.value) {
+    const range = getDownloadRangeMs();
+    fromEl.value = fmtDateInput(range.min);
+    toEl.value = fmtDateInput(range.max);
+  }
+  applyCustomRange();
+}
+
+function applyCustomRange() {
+  const fromEl = document.getElementById("rangeFrom"), toEl = document.getElementById("rangeTo");
+  if (!fromEl.value || !toEl.value) return;
+  const min = new Date(fromEl.value + "T00:00:00").getTime();
+  const max = new Date(toEl.value + "T23:59:59").getTime();
+  if (isNaN(min) || isNaN(max) || min >= max) return;
+  customRange = { min, max };
+}
+
+function gatherSelection() {
+  const stationIds = Array.from(document.querySelectorAll(".station-check:checked")).map(el => el.value);
+  const columns = EXPORT_COLUMNS.filter(c => document.querySelector(`.column-check[value="${c.key}"]`)?.checked);
+  const aggMode = document.querySelector('input[name="aggMode"]:checked')?.value || "raw";
+  const format = document.getElementById("downloadFormat").value;
+  return { stationIds, columns, aggMode, format, range: getDownloadRangeMs() };
+}
+
+function setBusy(busy) {
+  document.getElementById("downloadBtn").disabled = busy;
+  document.getElementById("plotBtn").disabled = busy;
+}
+
+// ---- CSV / Excel export (raw records, long format: one row per record per station) ----
+function csvEscape(v) {
+  const s = v === undefined || v === null ? "" : String(v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function toCSV(rows, columns) {
+  const header = ["timestamp_utc", "station", ...columns.map(c => c.label)];
+  const lines = [header.map(csvEscape).join(",")];
+  rows.forEach(r => {
+    const line = [
+      r.timestamp ? new Date(r.timestamp * 1000).toISOString() : "",
+      r.station,
+      ...columns.map(c => r[c.key] !== undefined && r[c.key] !== null ? r[c.key] : "")
+    ];
+    lines.push(line.map(csvEscape).join(","));
+  });
+  return lines.join("\r\n");
+}
+
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadXLSX(rows, columns, filename) {
+  const data = rows.map(r => {
+    const obj = { "Timestamp (UTC)": r.timestamp ? new Date(r.timestamp * 1000).toISOString() : "", "Station": r.station };
+    columns.forEach(c => { obj[c.label] = r[c.key] !== undefined && r[c.key] !== null ? r[c.key] : ""; });
+    return obj;
+  });
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Data");
+  XLSX.writeFile(wb, filename);
+}
+
+async function downloadData() {
+  const sel = gatherSelection();
+  if (!sel.stationIds.length) { alert("Select at least one station."); return; }
+  if (!sel.columns.length) { alert("Select at least one column."); return; }
+
+  setBusy(true);
+  try {
+    const results = await Promise.all(sel.stationIds.map(fetchDevice));
+    const allRows = [];
+    results.forEach(({ id, rows }) => {
+      rows
+        .filter(r => r.timestamp && r.timestamp * 1000 >= sel.range.min && r.timestamp * 1000 <= sel.range.max)
+        .forEach(r => allRows.push({ ...r, station: id }));
+    });
+    allRows.sort((a, b) => a.timestamp - b.timestamp);
+
+    if (!allRows.length) { alert("No records in the selected date range."); return; }
+
+    const filename = `aq-export_${fmtDateInput(sel.range.min)}_to_${fmtDateInput(sel.range.max)}`;
+    if (sel.format === "xlsx") downloadXLSX(allRows, sel.columns, filename + ".xlsx");
+    else triggerDownload(new Blob([toCSV(allRows, sel.columns)], { type: "text/csv" }), filename + ".csv");
+  } finally {
+    setBusy(false);
+  }
+}
+
+// ---- Plotting ----
+function bucketStart(ts, granularity) {
+  const d = new Date(ts * 1000);
+  return granularity === "hour"
+    ? new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()).getTime()
+    : new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+function bucketAverage(rows, column, granularity) {
+  const buckets = {};
+  rows.forEach(r => {
+    if (!r.timestamp || typeof r[column] !== "number") return;
+    const k = bucketStart(r.timestamp, granularity);
+    (buckets[k] = buckets[k] || []).push(r[column]);
+  });
+  return Object.keys(buckets)
+    .map(k => ({ x: Number(k), y: buckets[k].reduce((a, b) => a + b, 0) / buckets[k].length }))
+    .sort((a, b) => a.x - b.x);
+}
+
+// aggMode: "raw" (one line per station, unaggregated), "dailyavg" (one line
+// per station, bucketed to calendar-day averages), "avg" (single combined
+// line, all selected stations pooled into hourly buckets then averaged).
+function buildPlotSeries(stationsData, column, aggMode) {
+  if (aggMode === "avg") {
+    const buckets = {};
+    stationsData.forEach(({ rows }) => {
+      rows.forEach(r => {
+        if (!r.timestamp || typeof r[column] !== "number") return;
+        const k = bucketStart(r.timestamp, "hour");
+        (buckets[k] = buckets[k] || []).push(r[column]);
+      });
+    });
+    const points = Object.keys(buckets)
+      .map(k => ({ x: Number(k), y: buckets[k].reduce((a, b) => a + b, 0) / buckets[k].length }))
+      .sort((a, b) => a.x - b.x);
+    return [{ label: "Average (all selected stations)", data: points, color: STATION_COLORS[0] }];
+  }
+  if (aggMode === "dailyavg") {
+    return stationsData.map(({ id, rows }, i) => ({
+      label: id + " (daily avg)", data: bucketAverage(rows, column, "day"), color: STATION_COLORS[i % STATION_COLORS.length]
+    }));
+  }
+  return stationsData.map(({ id, rows }, i) => ({
+    label: id,
+    data: rows.filter(r => r.timestamp && typeof r[column] === "number").map(r => ({ x: r.timestamp * 1000, y: r[column] })),
+    color: STATION_COLORS[i % STATION_COLORS.length]
+  }));
+}
+
+function renderPlots(stationsData, columns, aggMode, range) {
+  const area = document.getElementById("plotArea");
+  const chartsEl = document.getElementById("plotCharts");
+  area.style.display = "block";
+
+  Object.values(plotCharts).forEach(ch => ch.destroy());
+  plotCharts = {};
+
+  chartsEl.innerHTML = columns.map(c => `<div class="plot-chart-box"><h3>${c.label}</h3><canvas id="plotChart_${c.key}"></canvas></div>`).join("");
+
+  columns.forEach(col => {
+    const series = buildPlotSeries(stationsData, col.key, aggMode);
+    const ctx = document.getElementById("plotChart_" + col.key).getContext("2d");
+    plotCharts[col.key] = new Chart(ctx, {
+      type: "line",
+      data: { datasets: series.map(s => ({ label: s.label, data: s.data, borderColor: s.color, backgroundColor: s.color + "33", tension: 0.25, pointRadius: 1.5 })) },
+      options: {
+        responsive: true, animation: false, parsing: false,
+        scales: {
+          x: {
+            type: "linear", min: range.min, max: range.max,
+            ticks: {
+              color: "#8b98a5", maxRotation: 0, autoSkip: true, maxTicksLimit: 8,
+              callback: v => {
+                const d = new Date(v);
+                return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+              }
+            },
+            grid: { color: "#263140" }
+          },
+          y: { ticks: { color: "#8b98a5" }, grid: { color: "#263140" } }
+        },
+        plugins: { legend: { display: series.length > 1, labels: { color: "#8b98a5" } } }
+      }
+    });
+  });
+
+  area.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function viewPlot() {
+  const sel = gatherSelection();
+  if (!sel.stationIds.length) { alert("Select at least one station."); return; }
+  if (!sel.columns.length) { alert("Select at least one column."); return; }
+
+  setBusy(true);
+  try {
+    const results = await Promise.all(sel.stationIds.map(fetchDevice));
+    const filtered = results.map(({ id, rows }) => ({
+      id,
+      rows: rows.filter(r => r.timestamp && r.timestamp * 1000 >= sel.range.min && r.timestamp * 1000 <= sel.range.max)
+    }));
+    if (!filtered.some(f => f.rows.length)) { alert("No records in the selected date range."); return; }
+    renderPlots(filtered, sel.columns, sel.aggMode, sel.range);
+  } finally {
+    setBusy(false);
+  }
+}
+
 buildMetricTabs();
 buildMap();
+buildStationChecks();
+buildDateRangeTabs();
+buildColumnChecks();
 loadAll();
 refreshTimer = setInterval(loadAll, REFRESH_MS);
+
+// Lets a "Data Download" link elsewhere (e.g. station.html's nav) deep-link
+// straight into Data Download mode instead of always opening on the map.
+if (new URLSearchParams(window.location.search).get("mode") === "download") selectSidebarMode("download");
 </script>
 
 <footer class="site-footer">
