@@ -96,8 +96,8 @@
     border-left: 1px solid var(--border); padding: 16px;
     display: flex; flex-direction: column; min-height: 0;
   }
+  .sidebar > .page-subnote { flex-shrink: 0; }
   #mapSidebarPanel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-  #mapSidebarPanel .page-subnote { flex-shrink: 0; }
   #deviceList { overflow-y: auto; flex: 1; min-height: 0; margin: 0 -16px; padding: 0 16px 16px; }
   #downloadSidebarPanel { flex: 1; overflow-y: auto; margin: 0 -16px; padding: 0 16px; }
   .control-section { margin-bottom: 22px; }
@@ -250,8 +250,8 @@
       <button class="page-tab active" id="modeTabMap" onclick="selectSidebarMode('map')">Air Quality Network Map</button>
       <button class="page-tab" id="modeTabDownload" onclick="selectSidebarMode('download')">Data Download</button>
     </nav>
+    <div class="page-subnote">Network and signal information reflects the device status reported in the latest received payload and does not represent a continuous live connection.</div>
     <div id="mapSidebarPanel">
-      <div class="page-subnote">Network and signal information reflects the device status reported in the latest received payload and does not represent a continuous live connection.</div>
       <div id="deviceList"><div class="empty-msg">Loading devices…</div></div>
     </div>
     <div id="downloadSidebarPanel" style="display:none;">
