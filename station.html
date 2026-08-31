@@ -288,12 +288,17 @@ function fmt(v, digits) {
 
 // Device sends a real UTC unix timestamp once the SIM7028 has network
 // time; older/pre-sync records may have 0 or be missing it entirely.
+// Always formatted in America/New_York (the sensors' physical location),
+// not the viewer's browser timezone, so "last sent" is unambiguous
+// regardless of where the dashboard is being viewed from. Keep in sync
+// with index.html.
 function fmtTime(ts) {
   if (!ts) return null;
   const d = new Date(ts * 1000);
   return d.toLocaleString(undefined, {
+    timeZone: "America/New_York",
     month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"
-  });
+  }) + " ET";
 }
 
 function battColor(soc) {
@@ -814,6 +819,16 @@ function switchDevice(name) {
 }
 
 document.getElementById("refreshBtn").addEventListener("click", loadData);
+
+// Browsers throttle setInterval timers heavily in background tabs, so a
+// tab left open in the background can drift well behind the 15s refresh
+// once it's brought back into focus — this forces an immediate re-fetch
+// on becoming visible instead of waiting for the next (possibly delayed)
+// tick, so this page and index.html don't appear out of sync just because
+// one of them was backgrounded.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") loadData();
+});
 
 // Lets the sidebar's "Station Details →" link on index.html jump
 // straight to a specific station instead of always opening the default.
