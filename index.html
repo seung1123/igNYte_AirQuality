@@ -243,6 +243,15 @@
       <div class="legend-row"><span class="legend-swatch" style="background:#f16565"></span>Extremely Weak</div>
       <div class="legend-row"><span class="legend-swatch" style="background:#8b98a5"></span>Unavailable</div>
     </div>
+    <div class="signal-legend" id="aqiLegend" style="display:none;">
+      <div class="legend-title">EPA AQI Category</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#00e400"></span>Good</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#ffff00"></span>Moderate</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#ff7e00"></span>Unhealthy (Sensitive)</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#ff0000"></span>Unhealthy</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#8f3f97"></span>Very Unhealthy</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:#7e0023"></span>Hazardous</div>
+    </div>
   </div>
   <div class="sidebar">
     <nav class="page-nav sidebar-nav">
@@ -946,6 +955,10 @@ function selectMetric(id) {
   activeMetric = id;
   document.querySelectorAll(".metric-tab").forEach(btn => btn.classList.toggle("active", btn.dataset.metric === id));
   document.getElementById("signalLegend").style.display = id === "status" ? "block" : "none";
+  // PM1 is excluded — EPA doesn't publish AQI breakpoints for it (see
+  // aqiCategoryColor's callers), so showing this legend there would imply
+  // a coloring that never actually applies.
+  document.getElementById("aqiLegend").style.display = ["pm25", "pm10", "no2", "o3"].includes(id) ? "block" : "none";
   renderBadgeContent(lastResults);
 }
 
@@ -1016,7 +1029,14 @@ function renderBadgeContent(results) {
       main.textContent = `~${loc.heightM || 0}m`;
       if (signalIcon) signalIcon.innerHTML = "";
       const r = metricReadingDetailed(rows, latest);
-      sub.innerHTML = `<div><span class="badge-value-lg">${r.latest}</span><span class="badge-unit">${r.unit}</span></div><div class="badge-avgline">${r.avgLabel} avg ${r.avg}</div>`;
+      // Both the live reading and its avg are colored by the same EPA
+      // category as the badge border (r.color, from the avg concentration
+      // — see metricReadingDetailed) since that's the single authoritative
+      // reading the color represents; null (no data / uncalibrated NO2-O3)
+      // falls back to the normal text colors.
+      const valueColor = r.color || "var(--text)";
+      const avgColor = r.color || "var(--muted)";
+      sub.innerHTML = `<div><span class="badge-value-lg" style="color:${valueColor}">${r.latest}</span><span class="badge-unit">${r.unit}</span></div><div class="badge-avgline" style="color:${avgColor}">${r.avgLabel} avg ${r.avg}</div>`;
       if (r.color) el.style.setProperty("--pollutant-color", r.color);
       else el.style.removeProperty("--pollutant-color");
     }
